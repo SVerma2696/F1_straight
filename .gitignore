@@ -1,0 +1,24 @@
+# Python leftovers -- stuff Python builds automatically, we don't need to save it
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# Files your computer's operating system makes on its own
+.DS_Store
+Thumbs.db
+
+# Folders your code editor makes for its own settings
+.vscode/
+.idea/
+
+# Leftovers from building the ESP32 controller firmware
+firmware/build/
+*.hex
+*.elf
+.pio/
+
+# graphify -- a generated map of the code (report/HTML/cache), can be rebuilt any time
+graphify-out/
