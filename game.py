@@ -1068,6 +1068,28 @@ class ThemeDropdown:
 #  day/night happens over in launcher.py -- this function just plays ONE
 #  race from start to finish, then hands control back.
 # --------------------------------------------------------------------------- #
+def _fit_rect(window_w, window_h):
+    """Work out how to fit our game picture (always drawn at the same
+    fixed WIDTH x HEIGHT size) into whatever size the window actually
+    is right now -- like fitting a photo into a picture frame that
+    isn't quite the same shape as the photo. We always keep the photo's
+    correct proportions instead of squishing it, so if the frame is too
+    wide or too tall for an exact fit, we center it with even, matching
+    borders on the sides that are left over.
+
+    Gives back: (scale, x_offset, y_offset, drawn_width, drawn_height)
+    """
+    window_w = max(window_w, 1)
+    window_h = max(window_h, 1)
+    scale = min(window_w / WIDTH, window_h / HEIGHT)
+    scale = max(scale, 0.1)   # never shrink to nothing, even if the window gets tiny
+    drawn_w = max(1, int(WIDTH * scale))
+    drawn_h = max(1, int(HEIGHT * scale))
+    x_offset = (window_w - drawn_w) // 2
+    y_offset = (window_h - drawn_h) // 2
+    return scale, x_offset, y_offset, drawn_w, drawn_h
+
+
 def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
     """
     Open the game window and play one race.
@@ -1089,12 +1111,24 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
     # let fresh ones get built for the new race.
     _FONT_CACHE.clear()
     pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    # RESIZABLE turns on the window's maximize button (and lets you drag
+    # the edges) -- without it, the window is stuck at one fixed size
+    # and that button does nothing at all.
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("The F1 Straight")
     clock = pygame.time.Clock()
     font = load_font(18)
     small_font = load_font(13)
     big = load_font(26, bold=True)
+
+    # Everything in the game still gets drawn onto this ONE fixed-size
+    # picture, exactly like before -- nothing about how the game draws
+    # itself has to change. At the very end of each frame, we stretch
+    # that picture to fill however big the real window is right now (see
+    # _fit_rect), so maximizing the window makes the whole game bigger
+    # instead of leaving it stuck in a tiny corner.
+    game_surface = pygame.Surface((WIDTH, HEIGHT))
+    win_w, win_h = WIDTH, HEIGHT
 
     inp = InputManager(serial_port=serial_port)
     theme = ThemeDropdown()
@@ -1110,6 +1144,24 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 pygame.quit()
                 return {"action": "quit", "high_score": game.high_score}
+
+            if event.type == pygame.VIDEORESIZE:
+                # the player dragged an edge, or clicked maximize/restore
+                # -- rebuild the real window at its new size (pygame
+                # needs this one extra step; it doesn't just happen by
+                # itself), with a small minimum so it can't shrink away
+                # to nothing
+                win_w, win_h = max(event.w, 240), max(event.h, 90)
+                screen = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
+
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                # pygame tells us where the mouse is in REAL window
+                # pixels, but the MODE button and HOME button were drawn
+                # using our smaller, fixed game size -- so we translate
+                # the click back into that smaller space first, before
+                # anything checks whether it landed on a button
+                scale, x_off, y_off, _, _ = _fit_rect(win_w, win_h)
+                event.pos = (int((event.pos[0] - x_off) / scale), int((event.pos[1] - y_off) / scale))
 
             theme.handle_event(event)
 
@@ -1129,16 +1181,24 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
 
         game.theme_mode = theme.mode
         game.step(inp.actions)                           # <- the game only ever hears "which buttons are pressed"
-        game.render(screen)
-        theme.draw(screen, game.palette(), small_font)
+        game.render(game_surface)
+        theme.draw(game_surface, game.palette(), small_font)
 
         if game.state == GAME_OVER:
             # draw a HOME button you can click after crashing
             pal = game.palette()
-            pygame.draw.rect(screen, pal["accent"], home_btn, border_radius=8)
-            pygame.draw.rect(screen, pal["ink"], home_btn, 1, border_radius=8)
+            pygame.draw.rect(game_surface, pal["accent"], home_btn, border_radius=8)
+            pygame.draw.rect(game_surface, pal["ink"], home_btn, 1, border_radius=8)
             lbl = small_font.render("HOME  [H]", True, (255, 255, 255))
-            screen.blit(lbl, lbl.get_rect(center=home_btn.center))
+            game_surface.blit(lbl, lbl.get_rect(center=home_btn.center))
+
+        # stretch our fixed-size picture to fill the real window, with
+        # matching black borders if the shapes don't line up exactly, so
+        # the game never looks squished, stretched, or stuck in a corner
+        scale, x_off, y_off, drawn_w, drawn_h = _fit_rect(win_w, win_h)
+        screen.fill((0, 0, 0))
+        big_picture = pygame.transform.smoothscale(game_surface, (drawn_w, drawn_h))
+        screen.blit(big_picture, (x_off, y_off))
 
         pygame.display.flip()
         clock.tick(FPS)

@@ -98,7 +98,12 @@ class InstructionsWindow(ctk.CTkToplevel):
         super().__init__(master)
         self.title("How to play")
         self.geometry("460x700")
-        self.resizable(False, False)
+        # letting this resize (and its maximize button work) means a
+        # bigger window just gives the instructions more breathing room
+        # -- nothing breaks, since the text area above already grows to
+        # fill whatever space it's given (see "body" below)
+        self.resizable(True, True)
+        self.minsize(360, 400)
         self.transient(master)   # keeps this window in front of the main menu
         self.grab_set()          # you have to close this before clicking the menu again
 
@@ -124,7 +129,11 @@ class Launcher(ctk.CTk):
         super().__init__()
         self.title("The F1 Straight")
         self.geometry("640x600")
-        self.resizable(False, False)
+        # lets you maximize (or just drag bigger) the menu window too --
+        # the layout stays anchored at the top instead of stretching,
+        # but the maximize button now actually does something
+        self.resizable(True, True)
+        self.minsize(640, 600)
 
         self.selected = 0          # which team is picked right now (0 = first team)
         self.theme_mode = "auto"

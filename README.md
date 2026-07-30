@@ -77,6 +77,10 @@ f1_straight/
   rendered with a bundled TTF font.
 * Obstacles spawn at randomized distances apart, so the game never
   settles into a predictable rhythm.
+* **Resizable, maximizable window** — drag an edge or hit maximize and
+  the whole game scales up with you, always keeping its correct
+  proportions (matching black borders fill in any leftover space rather
+  than stretching or squashing the picture).
 * Runs natively on **Windows, macOS, and Linux** -- see the
   cross-platform notes below.
 
