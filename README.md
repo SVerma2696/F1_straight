@@ -151,6 +151,13 @@ version tag (like `v1.0.0`) to GitHub runs this same script on all
 three operating systems automatically and publishes the results to the
 Releases page -- see `.github/workflows/release.yml`.
 
+**Troubleshooting a failed release build:** if the Actions log shows
+`Resource not accessible by integration` (a 403 error) on the last
+step, it means this repo's GitHub Actions token defaulted to
+read-only. That's fixed by the `permissions: contents: write` line
+near the top of the workflow file -- if you ever see this error again,
+that's the line to check first.
+
 ---
 
 ## 🔌 System Integrations (Data Flow)

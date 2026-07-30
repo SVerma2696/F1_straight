@@ -18,6 +18,14 @@ on:
       - "v*"
   workflow_dispatch:
 
+# By default, GitHub only gives this workflow permission to READ the
+# repo -- not to create anything. Making a Release counts as "creating
+# something," so without this, the last step below fails with a 403
+# error ("Resource not accessible by integration"), even though
+# everything before it worked fine. This line is what unlocks it.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
