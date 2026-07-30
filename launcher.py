@@ -12,11 +12,24 @@ good at menus, game.py is good at fast-moving pictures.
 
 Run it:  python launcher.py
 """
+import platform
+
 import customtkinter as ctk
 from PIL import Image
 import pygame
 
 import game as g
+
+# A real controller's "port name" looks different on each kind of
+# computer, so we show a matching example depending on what this
+# computer is -- Windows, Mac, or Linux.
+_OS_NAME = platform.system()
+if _OS_NAME == "Windows":
+    _PORT_EXAMPLE = "e.g. COM5"
+elif _OS_NAME == "Darwin":   # "Darwin" is the technical name for macOS
+    _PORT_EXAMPLE = "e.g. /dev/tty.usbserial-0001"
+else:   # Linux and anything else
+    _PORT_EXAMPLE = "e.g. /dev/ttyUSB0"
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("dark-blue")
@@ -70,8 +83,10 @@ INSTRUCTIONS = [
     )),
     ("Controller (optional)", (
         "You can plug in a real 4-button controller instead of using the\n"
-        "keyboard. Type its port (like COM5) into the CONTROLLER PORT box\n"
-        "on the menu before starting -- leave it blank to just use keys."
+        "keyboard. Type its port into the CONTROLLER PORT box on the menu\n"
+        "before starting (Windows looks like COM5; Mac and Linux look\n"
+        "like a path such as /dev/tty.usbserial-0001 or /dev/ttyUSB0).\n"
+        "Leave it blank to just use the keyboard."
     )),
 ]
 
@@ -82,7 +97,7 @@ class InstructionsWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("How to play")
-        self.geometry("460x690")
+        self.geometry("460x700")
         self.resizable(False, False)
         self.transient(master)   # keeps this window in front of the main menu
         self.grab_set()          # you have to close this before clicking the menu again
@@ -162,12 +177,14 @@ class Launcher(ctk.CTk):
         self.mode_menu.set("AUTO")
         self.mode_menu.pack()
 
-        # a real 4-button controller is optional -- type its port here
-        # (like "COM5") to use one, or leave it blank to just use the
-        # keyboard, which is what happens by default
+        # a real 4-button controller is optional -- type its port here to
+        # use one, or leave it blank to just use the keyboard, which is
+        # what happens by default. The example shown changes depending
+        # on whether this is Windows, Mac, or Linux, since each names
+        # ports differently.
         ctk.CTkLabel(mode_frame, text="CONTROLLER PORT (optional)", font=("Segoe UI", 10),
                      text_color="gray60").pack(anchor="e", pady=(10, 0))
-        self.port_entry = ctk.CTkEntry(mode_frame, placeholder_text="e.g. COM5", width=120)
+        self.port_entry = ctk.CTkEntry(mode_frame, placeholder_text=_PORT_EXAMPLE, width=170)
         self.port_entry.pack()
 
         self.hi_label = ctk.CTkLabel(self, text="High score: 00000",

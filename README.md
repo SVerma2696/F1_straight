@@ -8,25 +8,49 @@ that keeps accelerating through the gears. It's split into a
 **CustomTkinter** menu layer and a **pygame** real-time race engine,
 connected through one function call, with an **`InputManager`**
 abstraction clean enough that a real 4-button **ESP32** hardware
-controller drops in without touching a single line of game logic.
+controller drops in without touching a single line of game logic. Runs
+on **Windows, macOS, and Linux**, and can be packaged into a
+double-click download for each with **PyInstaller**.
+
+---
+
+## 📥 Download the App (no Python needed)
+Grab a ready-to-run download from the
+[Releases page](https://github.com/SVerma2696/f1_straight/releases) --
+pick the one for your computer:
+
+| Your computer | Download | First-time setup |
+|---|---|---|
+| Windows | `F1Straight-windows.exe` | Just double-click it. Windows SmartScreen may warn about an unrecognized app the first time -- click "More info" then "Run anyway." |
+| macOS | `F1Straight-macos` | Right-click (or Control-click) it and choose **Open** the first time, since it isn't signed by an Apple developer account -- macOS Gatekeeper blocks a plain double-click on unsigned apps. |
+| Linux | `F1Straight-linux` | Make it runnable first: `chmod +x F1Straight-linux`, then run it with `./F1Straight-linux`. |
+
+Every release is built fresh for all three from the same source code by
+[.github/workflows/release.yml](.github/workflows/release.yml), so
+they're always in sync with each other.
 
 ---
 
 ## 📂 Project Structure
 ```
-Scrolling_Game/
+f1_straight/
+├── .github/
+│   └── workflows/
+│       └── release.yml                      # Builds + publishes the 3 downloads above
 ├── assets/
 │   └── fonts/
 │       ├── OFL.txt                          # License for the Orbitron font
 │       └── Orbitron-Variable.ttf             # The scoreboard's font
 ├── firmware/
 │   └── endless_straight_controller.ino       # Optional 4-button ESP32 controller sketch
-├── .gitignore          # Ignore rules for caches, build junk, and generated files
-├── game.py              # The race engine: car, obstacles, input, scoreboard, main loop
-├── launcher.py           # The menu screen: team picker, theme picker, high score
-├── LICENSE                # MIT license
-├── README.md               # Project documentation
-└── requirements.txt         # Python dependencies
+├── .gitignore              # Ignore rules for caches, build junk, and generated files
+├── build_app.py             # Packages the game into one downloadable app (see below)
+├── game.py                   # The race engine: car, obstacles, input, scoreboard, main loop
+├── launcher.py                 # The menu screen: team picker, theme picker, high score
+├── LICENSE                       # MIT license
+├── README.md                       # Project documentation
+├── requirements.txt                  # Python dependencies (just to play from source)
+└── requirements-dev.txt                # Adds PyInstaller (only needed to build the app)
 ```
 
 ---
@@ -53,13 +77,16 @@ Scrolling_Game/
   rendered with a bundled TTF font.
 * Obstacles spawn at randomized distances apart, so the game never
   settles into a predictable rhythm.
+* Runs natively on **Windows, macOS, and Linux** -- see the
+  cross-platform notes below.
 
 ---
 
-## 🚀 How to Run
+## 🚀 Running From Source
 ### 1. Get the project
 ```
-cd Scrolling_Game
+git clone https://github.com/SVerma2696/f1_straight.git
+cd f1_straight
 ```
 
 ### 2. Install dependencies
@@ -80,6 +107,49 @@ python launcher.py
 ```
 *(Pick a team and a day/night mode, optionally enter your controller's
 port, then click START RACE.)*
+
+---
+
+## 🖥️ Cross-Platform Notes
+This project is developed and tested primarily on Windows, with these
+platform differences specifically accounted for in the code:
+
+* **Finding bundled files**: every file the game loads (like the
+  Orbitron font) is located relative to `sys._MEIPASS` when running as
+  a packaged app, or relative to the script folder otherwise -- both
+  paths built with `os.path.join`, so there are no hardcoded `\` or `/`
+  separators anywhere.
+* **Controller port names**: the launcher shows a different example in
+  the CONTROLLER PORT box depending on the detected OS -- `COM5`-style
+  on Windows, `/dev/tty.usbserial-...` on macOS, `/dev/ttyUSB0` on Linux.
+* **Font fallback**: if the bundled font ever fails to load, the
+  fallback list includes a font that's actually likely to be installed
+  on each OS (Consolas on Windows, Menlo on macOS, DejaVu Sans Mono on
+  most Linux distros).
+* **CustomTkinter's `"system"` appearance mode** (light/dark) reads the
+  OS theme automatically on Windows and macOS; on some Linux desktop
+  environments there's no theme setting for it to detect, so it may
+  default to light mode there regardless of your system theme -- pick
+  it manually with your desktop's usual dark-mode toggle if that
+  matters to you, or override it in `launcher.py`'s
+  `ctk.set_appearance_mode(...)` call.
+* **The downloadable apps** are unsigned (no Apple/Microsoft developer
+  certificate), so macOS and Windows both show a first-run warning --
+  see the download table above for how to get past it.
+
+---
+
+## 🛠️ Building the App Yourself
+```
+pip install -r requirements-dev.txt
+python build_app.py
+```
+This uses PyInstaller to produce a single-file app in `dist/`. Build on
+the same kind of computer you want the app to run on -- a Windows build
+only runs on Windows, and so on; you can't cross-build. Pushing a
+version tag (like `v1.0.0`) to GitHub runs this same script on all
+three operating systems automatically and publishes the results to the
+Releases page -- see `.github/workflows/release.yml`.
 
 ---
 
@@ -121,15 +191,19 @@ entire connection between the two layers.
   day/night transitions.
 * **Embedded firmware basics** — debounced digital input, internal
   pull-up resistors, and a fixed-format serial output on an ESP32.
+* **Cross-platform packaging** — one PyInstaller script and one GitHub
+  Actions matrix build turning the same source into native downloads
+  for three different operating systems.
 
 ---
 
 ## 🔧 Requirements
-* Python 3.8+
+* Python 3.8+ (only if running from source -- not needed for the downloads above)
 * `pygame-ce`, `customtkinter`, `pillow` (installed via `requirements.txt`)
 * `pyserial` -- only needed if you're using a real hardware controller
 * An ESP32 board + 4 push buttons -- optional, only for the hardware controller
 * Arduino IDE -- optional, only needed to flash the firmware
+* `pyinstaller` (via `requirements-dev.txt`) -- only needed to build the app yourself
 
 ---
 

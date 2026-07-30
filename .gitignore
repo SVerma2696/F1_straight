@@ -20,5 +20,13 @@ firmware/build/
 *.elf
 .pio/
 
+# Leftovers from building the downloadable app with build_app.py --
+# these are the FINISHED apps and PyInstaller's scratch files. We don't
+# save them here because .github/workflows/release.yml rebuilds fresh
+# ones automatically every time we tag a new version.
+build/
+dist/
+*.spec
+
 # graphify -- a generated map of the code (report/HTML/cache), can be rebuilt any time
 graphify-out/

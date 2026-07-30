@@ -162,12 +162,32 @@ def blend(c1, c2, t):
 
 
 # --------------------------------------------------------------------------- #
+#  Finding our own files, no matter how the game is being run
+# --------------------------------------------------------------------------- #
+def _app_dir():
+    """Find the folder our game files live in.
+
+    Normally that's just the folder this .py file is sitting in. But if
+    the game has been packaged into a single downloadable app (with a
+    tool called PyInstaller), Python actually unpacks everything into a
+    hidden temporary folder first and runs it from there -- so we check
+    for that special case (`sys._MEIPASS`) first, and only fall back to
+    "next to this file" when we're running from plain source code."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+# --------------------------------------------------------------------------- #
 #  Fonts -- the letters and numbers we draw on screen
 # --------------------------------------------------------------------------- #
 # We carry our own font file (called Orbitron) inside the game's folder,
-# so the game looks the same on every computer. If that file is ever
-# missing, we just use a normal font that's probably already installed.
-FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts", "Orbitron-Variable.ttf")
+# so the game looks the same on every computer -- Windows, Mac, or
+# Linux. If that file is ever missing, we just use a normal font that's
+# probably already installed (a slightly different list per computer,
+# since Windows, Mac, and Linux don't all ship the same fonts).
+FONT_PATH = os.path.join(_app_dir(), "assets", "fonts", "Orbitron-Variable.ttf")
+_FALLBACK_FONT_NAMES = "consolas,menlo,dejavusansmono,couriernew,monospace"
 _FONT_CACHE = {}   # remembers fonts we've already built, so we don't rebuild them every time
 
 
@@ -179,7 +199,7 @@ def load_font(size, bold=False):
         try:
             _FONT_CACHE[key] = pygame.font.Font(FONT_PATH, size)
         except (FileNotFoundError, OSError):
-            _FONT_CACHE[key] = pygame.font.SysFont("consolas,menlo,monospace", size, bold=bold)
+            _FONT_CACHE[key] = pygame.font.SysFont(_FALLBACK_FONT_NAMES, size, bold=bold)
     return _FONT_CACHE[key]
 
 

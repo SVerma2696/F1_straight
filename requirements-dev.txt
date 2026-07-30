@@ -1,0 +1,5 @@
+# Extra tools only needed if you're building the downloadable app
+# yourself (see build_app.py). Not needed just to play the game --
+# for that, `requirements.txt` is all you need.
+-r requirements.txt
+pyinstaller>=6.0
