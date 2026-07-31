@@ -1,6 +1,6 @@
 pygame-ce>=2.5
 customtkinter>=5.2
-pillow>=10.0
+pillow>=12.3.0
 
 # Only needed if you're using a real 4-button hardware controller
 # (see firmware/endless_straight_controller.ino). Not required to
