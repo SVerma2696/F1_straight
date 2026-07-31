@@ -1,5 +1,5 @@
 pygame-ce>=2.5
-customtkinter>=5.2
+customtkinter>=6.0.0
 pillow>=10.0
 
 # Only needed if you're using a real 4-button hardware controller
