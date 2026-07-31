@@ -61,10 +61,17 @@ f1_straight/
   the car is built from a color grid at runtime).
 * **DRS zones** — hold the boost button inside a scrolling green zone
   for a real speed boost, just like the activation zones on a real circuit.
+* **Gravel traps** — sandy patches that slow you down for a bit before
+  easing back up to speed; jump over one instead to dodge the penalty.
+* **Four famous tracks** — Monza, Monaco, Silverstone, or Suzuka, each
+  with its own background shape and color, or leave it on random for a
+  surprise every race.
 * **Unpredictable day/night cycles** — `AUTO` mode flips at a
   randomized point in your score (never the same gap twice), with the
   sun/moon **visually drifting** across the sky as the only hint a
   change is coming.
+* **High score saved to disk** — remembered the next time you open the
+  game, even after fully closing it.
 * **Optional hardware controller support** — plug in a physical
   4-button pad built on an **ESP32**, talking to the game over a small
   custom USB-serial protocol, debounced on the firmware side and
@@ -109,8 +116,8 @@ entirely to just use the keyboard.
 ```
 python launcher.py
 ```
-*(Pick a team and a day/night mode, optionally enter your controller's
-port, then click START RACE.)*
+*(Pick a team, a day/night mode, and a track (or leave it on RANDOM),
+optionally enter your controller's port, then click START RACE.)*
 
 ---
 
@@ -140,6 +147,12 @@ platform differences specifically accounted for in the code:
 * **The downloadable apps** are unsigned (no Apple/Microsoft developer
   certificate), so macOS and Windows both show a first-run warning --
   see the download table above for how to get past it.
+* **High score save location**: running from source, it's saved right
+  next to the game files (`high_score.json`). Running as a packaged
+  app, it's saved to the same per-user settings folder every other app
+  on your OS uses -- `%APPDATA%\TheF1Straight` on Windows,
+  `~/Library/Application Support/TheF1Straight` on macOS, or
+  `~/.local/share/TheF1Straight` (or `$XDG_DATA_HOME`) on Linux.
 
 ---
 
@@ -205,6 +218,15 @@ entire connection between the two layers.
 * **Cross-platform packaging** — one PyInstaller script and one GitHub
   Actions matrix build turning the same source into native downloads
   for three different operating systems.
+* **Reusable procedural background system** — one scrolling-shape
+  generator (rectangles, triangles, or rounded hills, each with its own
+  color and sizing) drives all four track themes, instead of needing
+  separate hand-drawn art per track.
+* **Persistent local state** — the high score is read from and written
+  to a small JSON file in a proper per-user data directory when running
+  as a packaged app (never the app's own folder, which may not be
+  writable, and never the temporary PyInstaller extraction folder,
+  which is wiped after the app closes).
 
 ---
 
@@ -220,9 +242,10 @@ entire connection between the two layers.
 
 ## 🎓 Credits & Attributions
 This is a personal/educational project, not affiliated with or endorsed
-by Formula 1, the FIA, or any of the named teams. Team names referenced
-in-game are used only to label the fictional livery colors and are the
-trademarks of their respective owners.
+by Formula 1, the FIA, or any of the named teams or circuits. Team and
+track names referenced in-game are used only as labels for the
+procedurally-generated colors/shapes, and are the trademarks of their
+respective owners.
 
 * **Font:** [Orbitron](https://github.com/google/fonts/tree/main/ofl/orbitron)
   by Matt McInerney, bundled under the [SIL Open Font License](assets/fonts/OFL.txt).

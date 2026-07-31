@@ -23,9 +23,17 @@ Cool things in this game
 * There are special green "DRS zones" on the road. Hold SHIFT while
   driving through one and your car gets a speed boost -- just like real
   F1 cars do!
-* The sky fades between pretty colors, buildings sit in the background,
-  little dust sparkles fly behind your tires, and the scoreboard uses a
-  cool robot-looking font.
+* Watch out for sandy-brown gravel patches -- drive through one and
+  you'll slow down for a little while before speeding back up. Jump
+  over a patch instead to dodge the penalty completely.
+* You can race at one of four famous real tracks (Monza, Monaco,
+  Silverstone, or Suzuka), each with its own background -- or just let
+  the game pick a random one for you.
+* Your high score is saved to disk, so it's still remembered the next
+  time you open the game, even if you closed it completely in between.
+* The sky fades between pretty colors, the background changes shape
+  depending on the track, little dust sparkles fly behind your tires,
+  and the scoreboard uses a cool robot-looking font.
 
 How to play
 -----------
@@ -58,6 +66,7 @@ A quick self-check, no window:    python game.py --selftest
 
 import os
 import sys
+import json
 import math
 import random
 import pygame
@@ -87,6 +96,13 @@ TRANSITION_FRAMES = 45       # how many frames it takes to slowly fade between d
 DRS_ZONE_MIN_W = 230         # the shortest a green zone can be
 DRS_ZONE_MAX_W = 360         # the longest a green zone can be
 
+# Gravel traps are patches of loose gravel that slow you down for a
+# little while if you drive through them -- jump over one to dodge it!
+GRAVEL_MIN_W = 150            # the shortest a gravel patch can be
+GRAVEL_MAX_W = 260            # the longest a gravel patch can be
+GRAVEL_SLOWDOWN = 0.45        # how much slower you go while stuck in gravel (0.45 = a bit less than half speed)
+GRAVEL_RECOVERY_FRAMES = 50   # how many frames it takes to smoothly speed back up after leaving the gravel
+
 # A palette is just a little box of colors -- one box for day, one for night
 DAY = {
     "bg":     (247, 247, 247),
@@ -104,6 +120,7 @@ NIGHT = {
 }
 
 DRS_GREEN = (0, 200, 110)   # the green used for DRS zones
+GRAVEL_COLOR = (176, 141, 87)   # the sandy-brown color used for gravel traps
 
 # These are the 11 real F1 teams, each with a color that looks like their
 # real paint job, so your car can match your favorite team. The colors
@@ -178,6 +195,62 @@ def _app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _data_dir():
+    """Find (or make) a folder for saving small things, like your high
+    score, that need to still be there the NEXT time you open the game.
+
+    This is different from _app_dir() above! When the game is packaged
+    into a single downloadable app, the folder from _app_dir() is a
+    temporary hiding spot that gets thrown away the moment you close the
+    game -- great for reading the font, terrible for saving anything.
+    So for saving, we instead use the same tucked-away folder every
+    other app on your computer uses for its own settings, which sticks
+    around between one time you play and the next.
+
+    When you're just running the game from its source code (not a
+    packaged app), we keep it simple and save right next to the game files."""
+    if getattr(sys, "frozen", False):
+        if os.name == "nt":              # Windows
+            base = os.getenv("APPDATA") or os.path.expanduser("~")
+        elif sys.platform == "darwin":   # macOS
+            base = os.path.expanduser("~/Library/Application Support")
+        else:                             # Linux and friends
+            base = os.getenv("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+        path = os.path.join(base, "TheF1Straight")
+    else:
+        path = _app_dir()
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+HIGH_SCORE_FILE = "high_score.json"
+
+
+def load_high_score():
+    """Read the saved high score from disk. If there isn't one yet (this
+    is your first time playing) or the file got messed up somehow, we
+    just start at 0 -- no harm done."""
+    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return int(data.get("high_score", 0))
+    except (FileNotFoundError, ValueError, OSError, TypeError):
+        return 0
+
+
+def save_high_score(score):
+    """Write the high score to disk so it's still there next time you
+    open the game. If saving fails for some reason (like the disk being
+    full or read-only), we just quietly skip it instead of crashing."""
+    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"high_score": int(score)}, f)
+    except OSError:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 #  Fonts -- the letters and numbers we draw on screen
 # --------------------------------------------------------------------------- #
@@ -204,30 +277,75 @@ def load_font(size, bold=False):
 
 
 # --------------------------------------------------------------------------- #
-#  City skyline -- the row of buildings way in the background
+#  Famous tracks -- the row of shapes way in the background changes
+#  depending on which real F1 track you're racing at
 # --------------------------------------------------------------------------- #
-# The buildings scroll by slower than the road, kind of like how far-away
+# The shapes scroll by slower than the road, kind of like how far-away
 # things out a car window seem to creep past slower than close-up things.
 # That little trick makes the world feel like it has real depth to it.
+#
+# Every track uses the SAME kind of scrolling background, just with a
+# different shape (buildings, pine trees, or rolling hills), a
+# different color, and different sizing -- so each one still feels like
+# its own place without us needing to draw real, detailed artwork.
 SKY_TILE_W = 300
 
+TRACKS = {
+    "monza": {
+        "label": "Monza", "shape": "tree", "seed": 1,
+        "tint": (40, 92, 55),           # pine-tree green
+        "w_range": (10, 18), "h_range": (30, 62), "gap_range": (4, 14),
+    },
+    "monaco": {
+        "label": "Monaco", "shape": "rect", "seed": 2,
+        "tint": (130, 150, 168),        # harbor-town blue-gray
+        "w_range": (14, 26), "h_range": (40, 85), "gap_range": (4, 10),
+    },
+    "silverstone": {
+        "label": "Silverstone", "shape": "rect", "seed": 3,
+        "tint": (120, 120, 126),        # concrete-gray grandstands
+        "w_range": (30, 55), "h_range": (18, 34), "gap_range": (10, 26),
+    },
+    "suzuka": {
+        "label": "Suzuka", "shape": "hill", "seed": 4,
+        "tint": (92, 150, 96),          # rolling green hills
+        "w_range": (40, 90), "h_range": (16, 32), "gap_range": (6, 18),
+    },
+}
+TRACK_NAMES = tuple(TRACKS.keys())
 
-def _make_skyline():
-    # We always build the exact same skyline (same starting seed every
-    # time), so the buildings look the same each time you play -- they
-    # just scroll past differently depending on how far you've gone.
-    rng = random.Random(42)
-    buildings = []
+
+def _make_track_skyline(seed, w_range, h_range, gap_range):
+    # We always build the exact same background for a given track (same
+    # starting seed every time), so it looks the same each time you play
+    # that track -- it just scrolls past differently depending on how
+    # far you've gone.
+    rng = random.Random(seed)
+    shapes = []
     x = 0
     while x < SKY_TILE_W:
-        w = rng.randint(18, 40)
-        h = rng.randint(20, 70)
-        buildings.append((x, w, h))
-        x += w + rng.randint(6, 20)
-    return buildings
+        w = rng.randint(*w_range)
+        h = rng.randint(*h_range)
+        shapes.append((x, w, h))
+        x += w + rng.randint(*gap_range)
+    return shapes
 
 
-SKYLINE = _make_skyline()
+# Build each track's background once, up front, instead of rebuilding it
+# every single frame -- it never changes once it's made.
+TRACK_SKYLINES = {
+    name: _make_track_skyline(cfg["seed"], cfg["w_range"], cfg["h_range"], cfg["gap_range"])
+    for name, cfg in TRACKS.items()
+}
+
+
+def pick_track(name=None):
+    """Turn whatever the player (or launcher) asked for into a real
+    track name. None or an unknown name means "surprise me" -- pick one
+    at random."""
+    if name in TRACKS:
+        return name
+    return random.choice(TRACK_NAMES)
 
 
 def draw_soft_shadow(surf, center_x, ground_y, width):
@@ -626,6 +744,49 @@ class DrsZone:
 
 
 # --------------------------------------------------------------------------- #
+#  Gravel trap -- a patch of loose gravel that slows you down if you
+#  drive through it. Jump over it to dodge the penalty!
+# --------------------------------------------------------------------------- #
+class GravelTrap:
+    def __init__(self, x, w):
+        self.x = float(x)
+        self.w = w
+
+    def update(self, speed):
+        self.x -= speed     # scroll toward the car, just like everything else on the road
+
+    def offscreen(self):
+        return self.x + self.w < -10
+
+    def covers(self, car_left, car_right):
+        # true if the car overlaps this patch at all, front to back
+        return self.x <= car_right and (self.x + self.w) >= car_left
+
+    def draw(self, surf, pal, active):
+        # a sandy-brown stripe painted onto the road
+        top = GROUND_Y - 2
+        band_h = 14
+        band = pygame.Surface((int(self.w), band_h), pygame.SRCALPHA)
+        alpha = 220 if active else 165     # looks a bit more solid while you're stuck in it
+        band.fill((*GRAVEL_COLOR, alpha))
+        surf.blit(band, (int(self.x), top))
+        # a scatter of darker specks so it reads as "gravel" instead of a
+        # plain rectangle. The pattern is fixed (not random each frame),
+        # so it doesn't flicker as it scrolls past.
+        dark_fleck = darker(GRAVEL_COLOR, 0.55)
+        x0 = int(self.x)
+        for gx in range(x0 + 4, x0 + int(self.w) - 4, 9):
+            for gy in range(top + 3, top + band_h - 2, 6):
+                if (gx * 7 + gy * 13) % 5 == 0:
+                    pygame.draw.rect(surf, dark_fleck, (gx, gy, 2, 2))
+        # a "GRAVEL" label that appears as the patch's front edge comes into view
+        entry = int(self.x + self.w)
+        if entry < WIDTH + 40:
+            tag = load_font(11, bold=True).render("GRAVEL", True, dark_fleck)
+            surf.blit(tag, tag.get_rect(midbottom=(entry, top - 4)))
+
+
+# --------------------------------------------------------------------------- #
 #  Tiny dust and spark specks that fly off the tires
 # --------------------------------------------------------------------------- #
 DUST_COLOR = (150, 140, 125)
@@ -668,11 +829,12 @@ class Particle:
 #  Game -- keeps track of everything happening in one race
 # --------------------------------------------------------------------------- #
 class Game:
-    def __init__(self, font=None, big_font=None, team_color=None, high_score=0):
+    def __init__(self, font=None, big_font=None, team_color=None, high_score=0, track=None):
         self.font = font
         self.big_font = big_font
         self.team_color = team_color or TEAMS[0][1]
         self.high_score = high_score
+        self.track = pick_track(track)   # which famous track's background we're using
         self.theme_mode = "auto"     # set from outside by the MODE button; stays put across reset()
         self.reset()
 
@@ -681,6 +843,11 @@ class Game:
         self.car = Car(self.team_color)
         self.obstacles = []
         self.zones = []
+        self.gravel_zones = []        # patches of gravel that slow you down for a bit
+        self.gravel_timer = 0
+        self.next_gravel_gap = 150
+        self.gravel_recovery = 0.0    # counts down while your speed eases back to normal
+        self.in_gravel = False
         self.speed = BASE_SPEED
         self.score = 0.0
         self.boosting = False
@@ -736,6 +903,15 @@ class Game:
         self.next_zone_gap = int(1100 / self.speed) + random.randint(30, 110)
         self.zone_timer = 0
 
+    def spawn_gravel(self):
+        # make a new gravel patch with a random width
+        w = random.randint(GRAVEL_MIN_W, GRAVEL_MAX_W)
+        self.gravel_zones.append(GravelTrap(WIDTH + 20, w))
+        # roughly every 4-7 seconds, a bit less often than DRS zones so the
+        # two don't feel like they're always fighting for your attention
+        self.next_gravel_gap = int(1400 / self.speed) + random.randint(40, 140)
+        self.gravel_timer = 0
+
     def step(self, actions):
         """Move the whole game forward by exactly one frame, using
         whichever buttons are currently being held down."""
@@ -773,6 +949,27 @@ class Game:
         if self.boosting:
             self.speed = min(MAX_BOOST_SPEED, self.speed * BOOST_MULTIPLIER)
 
+        # move the gravel patches and check if we're driving through one
+        # right now -- jumping over a patch (being off the ground) dodges
+        # the penalty completely
+        self.gravel_timer += 1
+        if self.gravel_timer >= self.next_gravel_gap:
+            self.spawn_gravel()
+        for g in self.gravel_zones:
+            g.update(self.speed)
+        self.gravel_zones = [g for g in self.gravel_zones if not g.offscreen()]
+        self.in_gravel = self.car.on_ground and any(g.covers(car_l, car_r) for g in self.gravel_zones)
+        if self.in_gravel:
+            self.gravel_recovery = GRAVEL_RECOVERY_FRAMES
+            self.speed *= GRAVEL_SLOWDOWN
+        elif self.gravel_recovery > 0:
+            # ease back up to full speed over the recovery window instead
+            # of snapping back all at once -- feels like your tires are
+            # digging back in and finding their grip again
+            t = self.gravel_recovery / GRAVEL_RECOVERY_FRAMES
+            self.speed *= lerp(1.0, GRAVEL_SLOWDOWN, t)
+            self.gravel_recovery -= 1
+
         self.score += self.speed / 8.0
         self.ground_scroll = (self.ground_scroll + self.speed) % 40
         self.bg_scroll = (self.bg_scroll + self.speed * 0.25) % SKY_TILE_W
@@ -789,7 +986,12 @@ class Game:
                     random.uniform(-1.5, 1.5), -random.uniform(0.5, 1.8),
                     life=20, size=3, color=DUST_COLOR))
         if self.car.on_ground:
-            rate = 0.55 if self.boosting else 0.15
+            if self.boosting:
+                rate = 0.55
+            elif self.in_gravel:
+                rate = 0.7    # kicking up a lot of gravel while stuck in the patch
+            else:
+                rate = 0.15
             if random.random() < rate:
                 wheel_x = self.car.x + (16 if random.random() < 0.5 else self.car.WIDTH - 16)
                 if self.boosting:
@@ -797,6 +999,11 @@ class Game:
                         wheel_x, GROUND_Y - 2,
                         -self.speed * 0.6 - random.uniform(0, 1.5), random.uniform(-0.6, 0.1),
                         life=18, size=3, color=random.choice(SPARK_COLORS)))
+                elif self.in_gravel:
+                    self.particles.append(Particle(
+                        wheel_x, GROUND_Y - 1,
+                        -self.speed * 0.25 - random.uniform(0, 0.5), -random.uniform(0.6, 1.4),
+                        life=22, size=4, color=darker(GRAVEL_COLOR, 0.8)))
                 else:
                     self.particles.append(Particle(
                         wheel_x, GROUND_Y - 1,
@@ -884,22 +1091,34 @@ class Game:
             surf.blit(glow, glow.get_rect(center=orb_pos))
         pygame.draw.circle(surf, orb, orb_pos, 22)
 
-        # the city skyline in the background, scrolling slower than the road
-        building_col = blend(pal["ground"], pal["sky"], 0.35)
+        # the track's background shapes (buildings, pine trees, or hills,
+        # depending on which track this is), scrolling slower than the road
+        track_cfg = TRACKS[self.track]
+        shape = track_cfg["shape"]
+        building_col = blend(track_cfg["tint"], pal["sky"], 0.3)
         offset = int(self.bg_scroll)
         for tile_x in range(-SKY_TILE_W, WIDTH + SKY_TILE_W, SKY_TILE_W):
-            for bx, bw, bh in SKYLINE:
+            for bx, bw, bh in TRACK_SKYLINES[self.track]:
                 x = tile_x + bx - offset
                 if x + bw < 0 or x > WIDTH:
                     continue
                 y = horizon_y - bh
-                pygame.draw.rect(surf, building_col, (x, y, bw, bh))
-                if self.night:
-                    # a few tiny glowing windows, like the lights are on inside
-                    for wy in range(y + 4, horizon_y - 4, 8):
-                        for wx in range(x + 3, x + bw - 3, 7):
-                            if (wx * 7 + wy * 13) % 5 == 0:
-                                pygame.draw.rect(surf, orb, (wx, wy, 2, 2))
+                if shape == "tree":
+                    # a simple triangle, like a pine tree
+                    pygame.draw.polygon(surf, building_col,
+                                        [(x + bw / 2, y), (x, horizon_y), (x + bw, horizon_y)])
+                elif shape == "hill":
+                    # a wide rounded bump, like a rolling hill
+                    pygame.draw.rect(surf, building_col, (x, y, bw, bh),
+                                     border_radius=min(bh, bw) // 2)
+                else:  # "rect" -- a plain building or grandstand block
+                    pygame.draw.rect(surf, building_col, (x, y, bw, bh))
+                    if self.night:
+                        # a few tiny glowing windows, like the lights are on inside
+                        for wy in range(y + 4, horizon_y - 4, 8):
+                            for wx in range(x + 3, x + bw - 3, 7):
+                                if (wx * 7 + wy * 13) % 5 == 0:
+                                    pygame.draw.rect(surf, orb, (wx, wy, 2, 2))
 
         if self.night:
             # tall floodlight poles, like the ones at a real night race
@@ -907,9 +1126,12 @@ class Game:
                 pygame.draw.rect(surf, pal["ground"], (fx, 40, 4, GROUND_Y - 100))
                 pygame.draw.rect(surf, orb, (fx - 10, 34, 24, 8))
 
-        # the green DRS zones are painted onto the road, underneath the car and obstacles
+        # the green DRS zones and the gravel patches are painted onto the
+        # road, underneath the car and obstacles
         for z in self.zones:
             z.draw(surf, pal, active=self.drs_available)
+        for g in self.gravel_zones:
+            g.draw(surf, pal, active=self.in_gravel)
 
         # the road line, plus little scrolling dashes to show you're moving
         pygame.draw.line(surf, pal["ground"], (0, GROUND_Y), (WIDTH, GROUND_Y), 3)
@@ -938,10 +1160,15 @@ class Game:
         # DRS message. We stack these one under the other using a running
         # "how far down are we so far" number, so they can never overlap.
         if self.font:
-            gear = min(8, int((self.speed - BASE_SPEED) / ((MAX_SPEED - BASE_SPEED) / 8)) + 1)
+            # clamped to at least gear 1 -- gravel can slow you down
+            # below your usual starting speed, but there's no such thing
+            # as a "negative gear" to show for that
+            gear = max(1, min(8, int((self.speed - BASE_SPEED) / ((MAX_SPEED - BASE_SPEED) / 8)) + 1))
 
             if self.boosting:
                 badge_txt, badge_col = "DRS ACTIVE", pal["accent"]
+            elif self.in_gravel:
+                badge_txt, badge_col = "IN GRAVEL!", GRAVEL_COLOR
             elif self.drs_available:
                 badge_txt, badge_col = "DRS READY", DRS_GREEN
             else:
@@ -1090,7 +1317,7 @@ def _fit_rect(window_w, window_h):
     return scale, x_offset, y_offset, drawn_w, drawn_h
 
 
-def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
+def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, track=None):
     """
     Open the game window and play one race.
 
@@ -1103,6 +1330,10 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
     Pass serial_port (like "COM5") to play with a real 4-button
     controller instead of the keyboard. Leave it as None to use the
     keyboard, which is what happens by default.
+
+    Pass track (one of the names in TRACKS, like "monza") to race at a
+    specific famous track's background. Leave it as None to get a
+    random one -- a fun surprise each time.
     """
     # Every time a race ends, pygame.quit() (further down) completely
     # shuts down pygame's font system. If we kept old fonts from a
@@ -1115,7 +1346,6 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
     # the edges) -- without it, the window is stuck at one fixed size
     # and that button does nothing at all.
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-    pygame.display.set_caption("The F1 Straight")
     clock = pygame.time.Clock()
     font = load_font(18)
     small_font = load_font(13)
@@ -1133,7 +1363,9 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None):
     inp = InputManager(serial_port=serial_port)
     theme = ThemeDropdown()
     theme.mode = theme_mode
-    game = Game(font, big, team_color=team_color, high_score=high_score)
+    game = Game(font, big, team_color=team_color, high_score=high_score, track=track)
+    # show which track we ended up racing at, right in the window's title bar
+    pygame.display.set_caption(f"The F1 Straight -- {TRACKS[game.track]['label']}")
     home_btn = pygame.Rect(WIDTH // 2 - 62, HEIGHT // 2 + 34, 124, 32)
 
     while True:
@@ -1249,5 +1481,7 @@ if __name__ == "__main__":
     else:
         # running this file directly (not through the launcher) skips the
         # team-picking menu -- the real way to start the game is
-        # `python launcher.py`
-        run_race(TEAMS[0][1])
+        # `python launcher.py`. We still load and save the high score
+        # here, so it's remembered even in this quick-testing mode.
+        result = run_race(TEAMS[0][1], high_score=load_high_score())
+        save_high_score(result.get("high_score", 0))

@@ -68,6 +68,16 @@ INSTRUCTIONS = [
         "while the car is inside one -- just like the real activation\n"
         "zones on an F1 circuit. The BOOST/DRS status shows in the HUD."
     )),
+    ("Gravel traps", (
+        "Sandy-brown patches on the track. Drive through one and you'll\n"
+        "slow down for a little while before easing back up to speed --\n"
+        "jump over a patch instead to dodge the penalty completely."
+    )),
+    ("Tracks", (
+        "Pick a famous real track from the TRACK menu -- Monza, Monaco,\n"
+        "Silverstone, or Suzuka, each with its own background -- or leave\n"
+        "it on RANDOM and let the game surprise you."
+    )),
     ("Day / night", (
         "In AUTO mode the track flips between day and night at a random\n"
         "point -- never the same gap twice -- so you can't predict it by\n"
@@ -78,8 +88,8 @@ INSTRUCTIONS = [
     )),
     ("Goal", (
         "Survive as long as possible -- hop the ground hazards, duck the\n"
-        "swooping seagulls, and beat your high score, which carries over\n"
-        "between races and team changes."
+        "swooping seagulls, and beat your high score, which is saved to\n"
+        "disk and remembered even after you close the game."
     )),
     ("Controller (optional)", (
         "You can plug in a real 4-button controller instead of using the\n"
@@ -97,7 +107,7 @@ class InstructionsWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("How to play")
-        self.geometry("460x700")
+        self.geometry("460x920")
         # letting this resize (and its maximize button work) means a
         # bigger window just gives the instructions more breathing room
         # -- nothing breaks, since the text area above already grows to
@@ -128,16 +138,18 @@ class Launcher(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("The F1 Straight")
-        self.geometry("640x600")
+        self.geometry("640x760")
         # lets you maximize (or just drag bigger) the menu window too --
         # the layout stays anchored at the top instead of stretching,
         # but the maximize button now actually does something
         self.resizable(True, True)
-        self.minsize(640, 600)
+        self.minsize(640, 760)
 
         self.selected = 0          # which team is picked right now (0 = first team)
         self.theme_mode = "auto"
-        self.high_score = 0        # kept here so it survives even if you change teams
+        # load whatever high score was saved from last time you played,
+        # so it doesn't reset to zero just because you closed the app
+        self.high_score = g.load_high_score()
         self.team_buttons = []
         self._preview_cache = {}   # remembers car pictures we've already built
 
@@ -186,6 +198,16 @@ class Launcher(ctk.CTk):
         self.mode_menu.set("AUTO")
         self.mode_menu.pack()
 
+        # which famous track's background to race at -- RANDOM means "let
+        # the game surprise me," which is also what happens if you never
+        # touch this menu at all
+        ctk.CTkLabel(mode_frame, text="TRACK", font=("Segoe UI", 11),
+                     text_color="gray60").pack(anchor="e", pady=(10, 0))
+        track_values = ["RANDOM"] + [cfg["label"].upper() for cfg in g.TRACKS.values()]
+        self.track_menu = ctk.CTkOptionMenu(mode_frame, values=track_values, width=120)
+        self.track_menu.set("RANDOM")
+        self.track_menu.pack()
+
         # a real 4-button controller is optional -- type its port here to
         # use one, or leave it blank to just use the keyboard, which is
         # what happens by default. The example shown changes depending
@@ -196,7 +218,7 @@ class Launcher(ctk.CTk):
         self.port_entry = ctk.CTkEntry(mode_frame, placeholder_text=_PORT_EXAMPLE, width=170)
         self.port_entry.pack()
 
-        self.hi_label = ctk.CTkLabel(self, text="High score: 00000",
+        self.hi_label = ctk.CTkLabel(self, text=f"High score: {self.high_score:05d}",
                                       font=("Segoe UI", 12), text_color="gray60")
         self.hi_label.pack(pady=(10, 0))
 
@@ -239,11 +261,16 @@ class Launcher(ctk.CTk):
         color = g.TEAMS[self.selected][1]
         # an empty box means "no controller" -- just use the keyboard
         port = self.port_entry.get().strip() or None
+        # "RANDOM" means "let the game pick one" -- game.py already knows
+        # how to turn None into a random choice, so we just pass it along
+        track_pick = self.track_menu.get()
+        track = None if track_pick == "RANDOM" else track_pick.lower()
         self.withdraw()
         result = g.run_race(color, theme_mode=self.theme_mode, high_score=self.high_score,
-                             serial_port=port)
+                             serial_port=port, track=track)
         self.high_score = max(self.high_score, result.get("high_score", 0))
         self.hi_label.configure(text=f"High score: {self.high_score:05d}")
+        g.save_high_score(self.high_score)   # so it's still here next time you open the game
 
         if result.get("action") == "quit":
             # they closed the game window -- close the menu too
