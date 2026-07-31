@@ -1,5 +1,7 @@
-# Extra tools only needed if you're building the downloadable app
-# yourself (see build_app.py). Not needed just to play the game --
-# for that, `requirements.txt` is all you need.
+# Extra tools only needed if you're building the downloadable app, or
+# running the automated tests, yourself (see build_app.py and tests/).
+# Not needed just to play the game -- for that, `requirements.txt` is
+# all you need.
 -r requirements.txt
 pyinstaller>=6.0
+pytest>=7.0

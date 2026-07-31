@@ -29,11 +29,16 @@ Cool things in this game
 * You can race at one of four famous real tracks (Monza, Monaco,
   Silverstone, or Suzuka), each with its own background -- or just let
   the game pick a random one for you.
-* Your high score is saved to disk, so it's still remembered the next
-  time you open the game, even if you closed it completely in between.
+* Your high score, your best 5 races, and your last-used team/track/mode
+  are all saved to disk, so nothing resets just because you closed the game.
 * The sky fades between pretty colors, the background changes shape
   depending on the track, little dust sparkles fly behind your tires,
   and the scoreboard uses a cool robot-looking font.
+* An engine hum that gets higher-pitched as you shift up through the
+  gears, a whoosh when DRS kicks in, and a thud when you crash -- all
+  built out of math, not sound files, just like the car picture.
+* Press P any time mid-race to pause -- the screen dims and everything
+  freezes until you press P again.
 
 How to play
 -----------
@@ -41,6 +46,7 @@ How to play
     DOWN / S                 Duck under things
     SHIFT                     Speed boost -- only works inside a green zone
     SPACE                     Play again after you crash
+    P                         Pause / un-pause
     H  or click HOME          After you crash: go back and pick a new team
     ESC                       Stop playing
     MODE button (top-left)    Pick AUTO (day turns to night on its own),
@@ -223,32 +229,83 @@ def _data_dir():
     return path
 
 
-HIGH_SCORE_FILE = "high_score.json"
+HIGH_SCORE_FILE = "high_score.json"   # one save file for everything: high score, last setup, leaderboard
+
+
+def _read_save_data():
+    """Read the whole save file as one dict. If there isn't one yet, or
+    it got messed up somehow, we just hand back an empty dict -- every
+    reader below already knows a sensible default for whatever's missing."""
+    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError, OSError, TypeError):
+        return {}
+
+
+def _write_save_data(updates):
+    """Change just the given keys in the save file, keeping everything
+    else in it exactly the same -- so saving your high score doesn't
+    accidentally erase your last-used team, and the other way around too."""
+    data = _read_save_data()
+    data.update(updates)
+    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except OSError:
+        pass   # disk full, read-only, whatever -- just skip it instead of crashing
 
 
 def load_high_score():
     """Read the saved high score from disk. If there isn't one yet (this
-    is your first time playing) or the file got messed up somehow, we
-    just start at 0 -- no harm done."""
-    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return int(data.get("high_score", 0))
-    except (FileNotFoundError, ValueError, OSError, TypeError):
-        return 0
+    is your first time playing), we just start at 0 -- no harm done."""
+    return int(_read_save_data().get("high_score", 0))
 
 
 def save_high_score(score):
     """Write the high score to disk so it's still there next time you
-    open the game. If saving fails for some reason (like the disk being
-    full or read-only), we just quietly skip it instead of crashing."""
-    path = os.path.join(_data_dir(), HIGH_SCORE_FILE)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"high_score": int(score)}, f)
-    except OSError:
-        pass
+    open the game."""
+    _write_save_data({"high_score": int(score)})
+
+
+def load_last_setup():
+    """Read back whichever team, track, and day/night mode you used last
+    time, so the launcher can start you off right where you left off
+    instead of always resetting to the very first team, a random track,
+    and AUTO mode."""
+    data = _read_save_data()
+    return {
+        "team": data.get("last_team"),
+        "track": data.get("last_track"),
+        "mode": data.get("last_mode", "auto"),
+    }
+
+
+def save_last_setup(team_name, track, mode):
+    """Remember which team, track, and mode you just used, for next time."""
+    _write_save_data({"last_team": team_name, "last_track": track, "last_mode": mode})
+
+
+def load_leaderboard():
+    """Read the top-5 list of your best races ever. Each entry remembers
+    the score, which team you were driving, and which track you were on."""
+    board = _read_save_data().get("leaderboard", [])
+    # sorted best-first, just in case the file was ever hand-edited
+    return sorted(board, key=lambda e: e.get("score", 0), reverse=True)[:5]
+
+
+def add_leaderboard_entry(score, team_name, track):
+    """Add a race you just finished to the top-5 list, if it's good
+    enough to make the cut, and save it. Also keeps the simple
+    "high_score" number in sync with whatever the new best is."""
+    board = load_leaderboard()
+    board.append({"score": int(score), "team": team_name, "track": track})
+    board.sort(key=lambda e: e.get("score", 0), reverse=True)
+    board = board[:5]
+    _write_save_data({"leaderboard": board, "high_score": board[0]["score"] if board else 0})
+    return board
 
 
 # --------------------------------------------------------------------------- #
@@ -274,6 +331,141 @@ def load_font(size, bold=False):
         except (FileNotFoundError, OSError):
             _FONT_CACHE[key] = pygame.font.SysFont(_FALLBACK_FONT_NAMES, size, bold=bold)
     return _FONT_CACHE[key]
+
+
+# --------------------------------------------------------------------------- #
+#  Sound -- little beeps and hums we build ourselves out of math, instead
+#  of loading sound files. Same idea as the car sprite and the track
+#  backgrounds: no outside art or audio, everything is made in code.
+# --------------------------------------------------------------------------- #
+SOUND_RATE = 22050    # how many tiny sound snapshots we make every second
+_AUDIO_OK = False       # turns True once we know sound actually works on this computer
+_SOUND_CACHE = {}       # remembers sounds we've already built, this pygame session
+
+
+def init_audio():
+    """Try to turn sound on. Every time a race starts or ends, pygame's
+    whole sound system gets shut down and restarted (same reason we
+    clear _FONT_CACHE each race -- see run_race() below), so this also
+    empties our sound cache. If this computer doesn't have a working
+    speaker set up, we just quietly turn sound off instead of crashing."""
+    global _AUDIO_OK
+    try:
+        pygame.mixer.quit()
+        pygame.mixer.init(frequency=SOUND_RATE, size=-16, channels=2)
+        _AUDIO_OK = True
+    except pygame.error:
+        _AUDIO_OK = False
+    _SOUND_CACHE.clear()
+
+
+def _make_wave(freq, duration, volume=0.4, wave="sine", fade_out=True):
+    """Build one little sound out of nothing but math -- no sound file
+    needed. `wave` picks the SHAPE of the sound: "sine" is smooth and
+    soft, "saw" is buzzy and engine-like, "square" is a hollow retro beep."""
+    n = int(SOUND_RATE * duration)
+    samples = bytearray()
+    for i in range(n):
+        t = i / SOUND_RATE
+        if wave == "saw":
+            s = 2.0 * ((freq * t) % 1.0) - 1.0
+        elif wave == "square":
+            s = 1.0 if (freq * t) % 1.0 < 0.5 else -1.0
+        else:  # "sine"
+            s = math.sin(2 * math.pi * freq * t)
+        if fade_out:
+            s *= max(0.0, 1.0 - t / duration)   # fade out smoothly, so it doesn't click at the end
+        value = int(max(-1.0, min(1.0, s * volume)) * 32767)
+        samples += value.to_bytes(2, byteorder="little", signed=True) * 2   # same value, left and right
+    return bytes(samples)
+
+
+def _make_sweep(freq_start, freq_end, duration, volume=0.4):
+    """Like _make_wave, but the pitch slides from one note to another --
+    used for the DRS "whoosh"."""
+    n = int(SOUND_RATE * duration)
+    samples = bytearray()
+    phase = 0.0
+    for i in range(n):
+        t = i / SOUND_RATE
+        freq = lerp(freq_start, freq_end, t / duration)
+        phase += freq / SOUND_RATE
+        s = math.sin(2 * math.pi * phase)
+        s *= max(0.0, 1.0 - t / duration)
+        value = int(max(-1.0, min(1.0, s * volume)) * 32767)
+        samples += value.to_bytes(2, byteorder="little", signed=True) * 2
+    return bytes(samples)
+
+
+def _get_sound(key, builder):
+    """Build a sound the first time it's needed, then reuse it -- same
+    caching trick as load_font()."""
+    if not _AUDIO_OK:
+        return None
+    if key not in _SOUND_CACHE:
+        _SOUND_CACHE[key] = pygame.mixer.Sound(buffer=builder())
+    return _SOUND_CACHE[key]
+
+
+def play_click():
+    """A short, high blip -- for menu buttons."""
+    snd = _get_sound("click", lambda: _make_wave(880, 0.05, volume=0.25, wave="square"))
+    if snd:
+        snd.play()
+
+
+def play_whoosh():
+    """A rising whoosh -- for the moment DRS boost kicks in."""
+    snd = _get_sound("whoosh", lambda: _make_sweep(300, 950, 0.3, volume=0.45))
+    if snd:
+        snd.play()
+
+
+def play_thud():
+    """A short, low thud -- for crashing, right alongside the white flash."""
+    snd = _get_sound("thud", lambda: _make_wave(85, 0.35, volume=0.6, wave="sine"))
+    if snd:
+        snd.play()
+
+
+# one steady note per gear (1-8) -- like a real engine revving higher and
+# higher as you shift up through the gears
+_ENGINE_GEAR_FREQS = (55, 65, 78, 92, 110, 130, 155, 185)
+
+
+class EngineSound:
+    """Plays a looping engine hum whose pitch matches your current gear,
+    on its own dedicated sound channel so it never gets cut off by the
+    other one-shot sounds (whoosh, thud, click)."""
+
+    def __init__(self):
+        self.channel = None
+        self.current_gear = None
+
+    def update(self, gear, boosting):
+        """Call this once a frame while the race is running."""
+        if not _AUDIO_OK:
+            return
+        if self.channel is None:
+            self.channel = pygame.mixer.Channel(1)   # channel 0 is left free for one-shot sounds
+        if gear != self.current_gear:
+            self.current_gear = gear
+            freq = _ENGINE_GEAR_FREQS[min(gear, len(_ENGINE_GEAR_FREQS)) - 1]
+            # an exact whole number of wave cycles fits in this clip, so
+            # the loop point is seamless -- no click or pop when it repeats
+            cycles = max(1, round(freq * 0.3))
+            duration = cycles / freq
+            snd = _get_sound(f"engine_{gear}", lambda f=freq, d=duration:
+                              _make_wave(f, d, volume=0.16, wave="saw", fade_out=False))
+            if snd:
+                self.channel.play(snd, loops=-1)
+        # a little quieter while boosting, so the whoosh cuts through clearly
+        self.channel.set_volume(0.6 if boosting else 1.0)
+
+    def stop(self):
+        if self.channel is not None:
+            self.channel.stop()
+        self.current_gear = None
 
 
 # --------------------------------------------------------------------------- #
@@ -861,6 +1053,9 @@ class Game:
         self.bg_scroll = 0.0          # the background buildings scroll slower than the road
         self.flash_timer = 0          # counts down the quick white flash right after a crash
         self.particles = []           # all the dust and spark specks on screen right now
+        self.paused = False           # freezes the whole race in place until you un-pause it
+        self.just_boosted = False     # true for exactly one frame: the frame DRS boost switches on
+        self.just_crashed = False     # true for exactly one frame: the frame you hit something
         self.night = False
         self.transition = 0.0
         # In auto mode, the current day/night stretch started at
@@ -879,6 +1074,13 @@ class Game:
         t = self.transition / TRANSITION_FRAMES
         return {k: lerp_color(base[k], other[k], t) if isinstance(base[k], tuple)
                 else base[k] for k in base}
+
+    @property
+    def gear(self):
+        # clamped to at least gear 1 -- gravel can slow you down below
+        # your usual starting speed, but there's no such thing as a
+        # "negative gear" to show for that
+        return max(1, min(8, int((self.speed - BASE_SPEED) / ((MAX_SPEED - BASE_SPEED) / 8)) + 1))
 
     def spawn_obstacle(self):
         # most of the time drop something on the ground; sometimes send a seagull instead
@@ -917,6 +1119,12 @@ class Game:
         whichever buttons are currently being held down."""
         inp = _DictInput(actions)
 
+        self.just_boosted = False
+        self.just_crashed = False
+
+        if self.paused:
+            return   # completely frozen -- nothing moves, nothing counts, until you un-pause
+
         if self.flash_timer > 0:
             self.flash_timer -= 1
 
@@ -945,7 +1153,9 @@ class Game:
         self.drs_available = any(z.covers(car_l, car_r) for z in self.zones)
 
         # boosting only works if you're holding the button AND inside a green zone
+        was_boosting = self.boosting
         self.boosting = inp.is_active("boost") and self.drs_available
+        self.just_boosted = self.boosting and not was_boosting   # true only on the frame it switches on
         if self.boosting:
             self.speed = min(MAX_BOOST_SPEED, self.speed * BOOST_MULTIPLIER)
 
@@ -1030,6 +1240,7 @@ class Game:
                 self.state = GAME_OVER
                 self.restart_lock = 15
                 self.flash_timer = 10
+                self.just_crashed = True
                 self.high_score = max(self.high_score, int(self.score))
                 break
 
@@ -1160,10 +1371,7 @@ class Game:
         # DRS message. We stack these one under the other using a running
         # "how far down are we so far" number, so they can never overlap.
         if self.font:
-            # clamped to at least gear 1 -- gravel can slow you down
-            # below your usual starting speed, but there's no such thing
-            # as a "negative gear" to show for that
-            gear = max(1, min(8, int((self.speed - BASE_SPEED) / ((MAX_SPEED - BASE_SPEED) / 8)) + 1))
+            gear = self.gear
 
             if self.boosting:
                 badge_txt, badge_col = "DRS ACTIVE", pal["accent"]
@@ -1216,6 +1424,16 @@ class Game:
             # the big "you crashed" message in the middle of the screen
             msg = self.big_font.render("YELLOW FLAG - crashed out", True, pal["accent"])
             sub = self.font.render("SPACE to rejoin the grid", True, pal["ink"])
+            surf.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 14)))
+            surf.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 16)))
+
+        if self.paused and self.big_font:
+            # dim everything, then show a big PAUSED message on top
+            dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 140))
+            surf.blit(dim, (0, 0))
+            msg = self.big_font.render("PAUSED", True, (255, 255, 255))
+            sub = self.font.render("P to resume", True, (230, 230, 230))
             surf.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 14)))
             surf.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 16)))
 
@@ -1322,10 +1540,12 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     Open the game window and play one race.
 
     When it's over, it hands back a little note saying what happened:
-    {"action": "home" | "quit", "high_score": int}
+    {"action": "home" | "quit", "high_score": int, "score": int}
     "home"  -- you crashed and pressed H, clicked HOME, or pressed the
                HOME button on a real controller, to go pick a new team
     "quit"  -- you closed the window or pressed ESC
+    "score" is just how many points THIS race scored (handy for the
+    leaderboard), separate from "high_score", which is your best ever.
 
     Pass serial_port (like "COM5") to play with a real 4-button
     controller instead of the keyboard. Leave it as None to use the
@@ -1336,12 +1556,13 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     random one -- a fun surprise each time.
     """
     # Every time a race ends, pygame.quit() (further down) completely
-    # shuts down pygame's font system. If we kept old fonts from a
-    # PREVIOUS race sitting in our cache, trying to use them again would
-    # crash the whole program -- so we throw away the old fonts here and
-    # let fresh ones get built for the new race.
+    # shuts down pygame's font AND sound systems. If we kept old fonts or
+    # sounds from a PREVIOUS race sitting in our caches, trying to use
+    # them again would crash the whole program -- so we throw those old
+    # ones away here and let fresh ones get built for the new race.
     _FONT_CACHE.clear()
     pygame.init()
+    init_audio()
     # RESIZABLE turns on the window's maximize button (and lets you drag
     # the edges) -- without it, the window is stuck at one fixed size
     # and that button does nothing at all.
@@ -1364,6 +1585,8 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     theme = ThemeDropdown()
     theme.mode = theme_mode
     game = Game(font, big, team_color=team_color, high_score=high_score, track=track)
+    engine = EngineSound()          # the looping engine hum, pitched to your current gear
+    prev_pause_chord = False        # so holding JUMP+HOME only toggles pause once, not every frame
     # show which track we ended up racing at, right in the window's title bar
     pygame.display.set_caption(f"The F1 Straight -- {TRACKS[game.track]['label']}")
     home_btn = pygame.Rect(WIDTH // 2 - 62, HEIGHT // 2 + 34, 124, 32)
@@ -1371,11 +1594,15 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                engine.stop()
                 pygame.quit()
-                return {"action": "quit", "high_score": game.high_score}
+                return {"action": "quit", "high_score": game.high_score, "score": int(game.score)}
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                engine.stop()
                 pygame.quit()
-                return {"action": "quit", "high_score": game.high_score}
+                return {"action": "quit", "high_score": game.high_score, "score": int(game.score)}
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_p and game.state == RUNNING:
+                game.paused = not game.paused   # P pauses and un-pauses -- only while still racing
 
             if event.type == pygame.VIDEORESIZE:
                 # the player dragged an edge, or clicked maximize/restore
@@ -1402,17 +1629,36 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
             # below instead, once per frame, since InputManager owns it.
             if (game.state == GAME_OVER and event.type == pygame.MOUSEBUTTONDOWN
                     and event.button == 1 and home_btn.collidepoint(event.pos)):
+                engine.stop()
                 pygame.quit()
-                return {"action": "home", "high_score": game.high_score}
+                return {"action": "home", "high_score": game.high_score, "score": int(game.score)}
 
         inp.update()                                    # <- reads the keyboard, or a real controller
 
+        # a controller has no dedicated pause button, so holding JUMP and
+        # HOME together works as a "pause chord" -- HOME normally does
+        # nothing at all while still racing, so this can't be triggered by
+        # accident during normal play
+        pause_chord = inp.is_active("jump") and inp.is_active("home")
+        if pause_chord and not prev_pause_chord and game.state == RUNNING:
+            game.paused = not game.paused
+        prev_pause_chord = pause_chord
+
         if game.state == GAME_OVER and inp.is_active("home"):
+            engine.stop()
             pygame.quit()
-            return {"action": "home", "high_score": game.high_score}
+            return {"action": "home", "high_score": game.high_score, "score": int(game.score)}
 
         game.theme_mode = theme.mode
         game.step(inp.actions)                           # <- the game only ever hears "which buttons are pressed"
+        if game.just_boosted:
+            play_whoosh()
+        if game.just_crashed:
+            play_thud()
+        if game.state == RUNNING and not game.paused:
+            engine.update(game.gear, game.boosting)
+        else:
+            engine.stop()
         game.render(game_surface)
         theme.draw(game_surface, game.palette(), small_font)
 

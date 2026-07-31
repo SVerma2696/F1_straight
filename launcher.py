@@ -12,29 +12,32 @@ good at menus, game.py is good at fast-moving pictures.
 
 Run it:  python launcher.py
 """
-import platform
-
 import customtkinter as ctk
 from PIL import Image
 import pygame
 
-import game as g
+try:
+    import serial.tools.list_ports   # only used to look up connected controllers
+except ImportError:
+    serial = None   # pyserial isn't installed -- we just won't find any controllers, that's all
 
-# A real controller's "port name" looks different on each kind of
-# computer, so we show a matching example depending on what this
-# computer is -- Windows, Mac, or Linux.
-_OS_NAME = platform.system()
-if _OS_NAME == "Windows":
-    _PORT_EXAMPLE = "e.g. COM5"
-elif _OS_NAME == "Darwin":   # "Darwin" is the technical name for macOS
-    _PORT_EXAMPLE = "e.g. /dev/tty.usbserial-0001"
-else:   # Linux and anything else
-    _PORT_EXAMPLE = "e.g. /dev/ttyUSB0"
+import game as g
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("dark-blue")
 
 TEAM_COLS = 4     # how many team buttons fit in one row
+
+NO_CONTROLLER = "No controller found -- using keyboard"
+
+
+def _detect_ports():
+    """Ask the computer which serial devices are plugged in right now --
+    this is how we find a real controller automatically instead of
+    making you type its port name yourself."""
+    if serial is None:
+        return []
+    return [p.device for p in serial.tools.list_ports.comports()]
 
 
 def _hex(color):
@@ -59,6 +62,7 @@ INSTRUCTIONS = [
         "SPACE / UP / W" + " " * 4 + "Bunny-hop (jump)\n"
         "DOWN / S" + " " * 10 + "Aero tuck (duck)\n"
         "SHIFT" + " " * 14 + "DRS boost -- only inside a green DRS zone\n"
+        "P" + " " * 19 + "Pause / un-pause\n"
         "SPACE" + " " * 14 + "Restart after a crash\n"
         "H" + " " * 19 + "After a crash: back to this menu\n"
         "ESC" + " " * 16 + "Quit the race"
@@ -88,15 +92,20 @@ INSTRUCTIONS = [
     )),
     ("Goal", (
         "Survive as long as possible -- hop the ground hazards, duck the\n"
-        "swooping seagulls, and beat your high score, which is saved to\n"
-        "disk and remembered even after you close the game."
+        "swooping seagulls, and beat your high score. Your high score,\n"
+        "your best 5 races, and your last team/track/mode are all saved\n"
+        "to disk and remembered even after you close the game."
+    )),
+    ("Leaderboard", (
+        "Click LEADERBOARD on the menu to see your best 5 races ever --\n"
+        "each one remembers the score, the team, and the track."
     )),
     ("Controller (optional)", (
         "You can plug in a real 4-button controller instead of using the\n"
-        "keyboard. Type its port into the CONTROLLER PORT box on the menu\n"
-        "before starting (Windows looks like COM5; Mac and Linux look\n"
-        "like a path such as /dev/tty.usbserial-0001 or /dev/ttyUSB0).\n"
-        "Leave it blank to just use the keyboard."
+        "keyboard. The CONTROLLER PORT menu automatically lists any\n"
+        "connected devices -- just pick yours from the list (hit the\n"
+        "small refresh button if you plug it in after opening the menu).\n"
+        "No controller found just means the keyboard will be used."
     )),
 ]
 
@@ -129,7 +138,54 @@ class InstructionsWindow(ctk.CTkToplevel):
                          anchor="w").pack(fill="x")
 
         ctk.CTkButton(self, text="CLOSE", width=140, height=36, corner_radius=8,
-                      command=self.destroy).pack(pady=18)
+                      command=self._close).pack(pady=18)
+
+    def _close(self):
+        g.play_click()
+        self.destroy()
+
+
+class LeaderboardWindow(ctk.CTkToplevel):
+    """The little pop-up window showing your best 5 races ever."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Leaderboard")
+        self.geometry("420x420")
+        self.resizable(True, True)
+        self.minsize(340, 300)
+        self.transient(master)
+        self.grab_set()
+
+        ctk.CTkLabel(self, text="TOP 5 RACES",
+                     font=("Segoe UI", 20, "bold")).pack(pady=(20, 12))
+
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=24)
+
+        board = g.load_leaderboard()
+        if not board:
+            ctk.CTkLabel(body, text="No races finished yet -- go set a record!",
+                         font=("Segoe UI", 12), text_color="gray60").pack(pady=20)
+        else:
+            for i, entry in enumerate(board, start=1):
+                track_cfg = g.TRACKS.get(entry.get("track"))
+                track_label = track_cfg["label"] if track_cfg else "Random"
+                row = ctk.CTkFrame(body, fg_color="transparent")
+                row.pack(fill="x", pady=4)
+                ctk.CTkLabel(row, text=f"#{i}", font=("Segoe UI", 13, "bold"),
+                             text_color="#E10600", width=32, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=f"{entry.get('score', 0):05d}", font=("Consolas", 13, "bold"),
+                             anchor="w", width=80).pack(side="left")
+                ctk.CTkLabel(row, text=f"{entry.get('team', '?')} -- {track_label}",
+                             font=("Segoe UI", 12), text_color="gray70", anchor="w").pack(side="left")
+
+        ctk.CTkButton(self, text="CLOSE", width=140, height=36, corner_radius=8,
+                      command=self._close).pack(pady=18)
+
+    def _close(self):
+        g.play_click()
+        self.destroy()
 
 
 class Launcher(ctk.CTk):
@@ -145,16 +201,23 @@ class Launcher(ctk.CTk):
         self.resizable(True, True)
         self.minsize(640, 760)
 
-        self.selected = 0          # which team is picked right now (0 = first team)
-        self.theme_mode = "auto"
-        # load whatever high score was saved from last time you played,
-        # so it doesn't reset to zero just because you closed the app
+        g.init_audio()   # turn sound on for menu clicks (a race will also do this itself when it starts)
+
+        # load whatever high score, last team/track/mode were saved from
+        # last time you played, so nothing resets just because you
+        # closed the app
         self.high_score = g.load_high_score()
+        setup = g.load_last_setup()
+        self.theme_mode = setup["mode"] if setup["mode"] in g.THEME_MODES else "auto"
+        self.last_track = setup["track"] if setup["track"] in g.TRACKS else None
+        last_team_i = next((i for i, (name, _) in enumerate(g.TEAMS) if name == setup["team"]), 0)
+
+        self.selected = 0          # which team is picked right now (0 = first team)
         self.team_buttons = []
         self._preview_cache = {}   # remembers car pictures we've already built
 
         self._build_ui()
-        self._select(0)
+        self._select(last_team_i)
 
     # ------------------------------------------------------------ building the screen
     def _build_ui(self):
@@ -172,7 +235,7 @@ class Launcher(ctk.CTk):
                 fg_color=_hex(color), hover_color=_hex(g.darker(color, 0.75)),
                 text_color=("#141414" if g.luminance(color) > 0.6 else "#f5f5f5"),
                 border_width=0, border_color="#ffffff",
-                command=lambda i=i: self._select(i),
+                command=lambda i=i: self._pick_team(i),
             )
             btn.grid(row=i // TEAM_COLS, column=i % TEAM_COLS, padx=6, pady=6)
             self.team_buttons.append(btn)
@@ -195,7 +258,7 @@ class Launcher(ctk.CTk):
                      text_color="gray60").pack(anchor="e")
         self.mode_menu = ctk.CTkOptionMenu(mode_frame, values=["AUTO", "LIGHT", "DARK"],
                                             command=self._on_mode, width=120)
-        self.mode_menu.set("AUTO")
+        self.mode_menu.set(g.THEME_LABELS[self.theme_mode])
         self.mode_menu.pack()
 
         # which famous track's background to race at -- RANDOM means "let
@@ -204,19 +267,25 @@ class Launcher(ctk.CTk):
         ctk.CTkLabel(mode_frame, text="TRACK", font=("Segoe UI", 11),
                      text_color="gray60").pack(anchor="e", pady=(10, 0))
         track_values = ["RANDOM"] + [cfg["label"].upper() for cfg in g.TRACKS.values()]
-        self.track_menu = ctk.CTkOptionMenu(mode_frame, values=track_values, width=120)
-        self.track_menu.set("RANDOM")
+        self.track_menu = ctk.CTkOptionMenu(mode_frame, values=track_values,
+                                             command=self._on_track, width=120)
+        self.track_menu.set(g.TRACKS[self.last_track]["label"].upper() if self.last_track else "RANDOM")
         self.track_menu.pack()
 
-        # a real 4-button controller is optional -- type its port here to
-        # use one, or leave it blank to just use the keyboard, which is
-        # what happens by default. The example shown changes depending
-        # on whether this is Windows, Mac, or Linux, since each names
-        # ports differently.
+        # a real 4-button controller is optional -- pick its port from the
+        # list of devices actually plugged in right now, or leave it on
+        # "no controller found" to just use the keyboard, which is what
+        # happens by default
         ctk.CTkLabel(mode_frame, text="CONTROLLER PORT (optional)", font=("Segoe UI", 10),
                      text_color="gray60").pack(anchor="e", pady=(10, 0))
-        self.port_entry = ctk.CTkEntry(mode_frame, placeholder_text=_PORT_EXAMPLE, width=170)
-        self.port_entry.pack()
+        port_row = ctk.CTkFrame(mode_frame, fg_color="transparent")
+        port_row.pack()
+        ports = _detect_ports()
+        self.port_menu = ctk.CTkOptionMenu(port_row, values=ports or [NO_CONTROLLER],
+                                            command=lambda _v: g.play_click(), width=142)
+        self.port_menu.set(ports[0] if ports else NO_CONTROLLER)
+        self.port_menu.pack(side="left")
+        ctk.CTkButton(port_row, text="⟳", width=28, command=self._refresh_ports).pack(side="left", padx=(4, 0))
 
         self.hi_label = ctk.CTkLabel(self, text=f"High score: {self.high_score:05d}",
                                       font=("Segoe UI", 12), text_color="gray60")
@@ -227,12 +296,22 @@ class Launcher(ctk.CTk):
                       font=("Segoe UI", 16, "bold"),
                       command=self._start).pack(pady=(20, 10))
 
-        ctk.CTkButton(self, text="?  HOW TO PLAY", width=180, height=32,
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(pady=(0, 16))
+        ctk.CTkButton(btn_row, text="?  HOW TO PLAY", width=170, height=32,
                       corner_radius=8, fg_color="transparent", border_width=1,
                       font=("Segoe UI", 12),
-                      command=self._open_instructions).pack(pady=(0, 16))
+                      command=self._open_instructions).pack(side="left", padx=4)
+        ctk.CTkButton(btn_row, text="\U0001F3C6  LEADERBOARD", width=170, height=32,
+                      corner_radius=8, fg_color="transparent", border_width=1,
+                      font=("Segoe UI", 12),
+                      command=self._open_leaderboard).pack(side="left", padx=4)
 
     # ------------------------------------------------------------ what happens when you click things
+    def _pick_team(self, i):
+        g.play_click()
+        self._select(i)
+
     def _select(self, i):
         # remember which team is picked, and put a bright border around its button
         self.selected = i
@@ -251,16 +330,35 @@ class Launcher(ctk.CTk):
         self._name_label.configure(text=name)
 
     def _on_mode(self, value):
+        g.play_click()
         self.theme_mode = value.lower()
 
+    def _on_track(self, value):
+        g.play_click()
+
+    def _refresh_ports(self):
+        # look again for connected controllers -- handy if you plugged
+        # one in after the menu was already open
+        g.play_click()
+        ports = _detect_ports()
+        values = ports or [NO_CONTROLLER]
+        self.port_menu.configure(values=values)
+        self.port_menu.set(values[0])
+
     def _open_instructions(self):
+        g.play_click()
         InstructionsWindow(self)
 
+    def _open_leaderboard(self):
+        g.play_click()
+        LeaderboardWindow(self)
+
     def _start(self):
+        g.play_click()
         # hide the menu, run one whole race, then decide what to do once it's over
-        color = g.TEAMS[self.selected][1]
-        # an empty box means "no controller" -- just use the keyboard
-        port = self.port_entry.get().strip() or None
+        team_name, color = g.TEAMS[self.selected]
+        port_pick = self.port_menu.get()
+        port = None if port_pick == NO_CONTROLLER else port_pick
         # "RANDOM" means "let the game pick one" -- game.py already knows
         # how to turn None into a random choice, so we just pass it along
         track_pick = self.track_menu.get()
@@ -268,9 +366,14 @@ class Launcher(ctk.CTk):
         self.withdraw()
         result = g.run_race(color, theme_mode=self.theme_mode, high_score=self.high_score,
                              serial_port=port, track=track)
+        g.init_audio()   # run_race() just shut sound down when it closed -- bring it back for the menu
+
         self.high_score = max(self.high_score, result.get("high_score", 0))
         self.hi_label.configure(text=f"High score: {self.high_score:05d}")
-        g.save_high_score(self.high_score)   # so it's still here next time you open the game
+        # remember this race for the leaderboard, and remember this setup
+        # (team/track/mode) so next time the app opens right back here
+        g.add_leaderboard_entry(result.get("score", 0), team_name, track)
+        g.save_last_setup(team_name, track, self.theme_mode)
 
         if result.get("action") == "quit":
             # they closed the game window -- close the menu too

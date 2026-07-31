@@ -43,14 +43,25 @@ f1_straight/
 │       └── Orbitron-Variable.ttf             # The scoreboard's font
 ├── firmware/
 │   └── endless_straight_controller.ino       # Optional 4-button ESP32 controller sketch
+├── tests/
+│   ├── conftest.py                           # Shared pytest setup (headless pygame, import path)
+│   ├── test_controller.py                    # InputManager: keyboard + fake-serial parsing
+│   ├── test_drs.py                           # DRS zones and boosting
+│   ├── test_gravel.py                        # Gravel traps: slowdown, recovery, jump-dodge
+│   ├── test_pause.py                         # Pausing mid-race
+│   ├── test_persistence.py                   # High score, last setup, leaderboard save/load
+│   ├── test_resize.py                        # Fitting the game picture into a resized window
+│   ├── test_sound.py                         # Procedural sound effects
+│   └── test_tracks.py                        # Famous-track background generation
 ├── .gitignore              # Ignore rules for caches, build junk, and generated files
 ├── build_app.py             # Packages the game into one downloadable app (see below)
-├── game.py                   # The race engine: car, obstacles, input, scoreboard, main loop
-├── launcher.py                 # The menu screen: team picker, theme picker, high score
+├── game.py                   # The race engine: car, obstacles, input, sound, scoreboard, main loop
+├── launcher.py                 # The menu screen: team picker, theme picker, leaderboard
 ├── LICENSE                       # MIT license
+├── pytest.ini                     # Tells pytest where to find the tests/ folder
 ├── README.md                       # Project documentation
 ├── requirements.txt                  # Python dependencies (just to play from source)
-└── requirements-dev.txt                # Adds PyInstaller (only needed to build the app)
+└── requirements-dev.txt                # Adds PyInstaller and pytest (only needed to build/test)
 ```
 
 ---
@@ -70,12 +81,21 @@ f1_straight/
   randomized point in your score (never the same gap twice), with the
   sun/moon **visually drifting** across the sky as the only hint a
   change is coming.
-* **High score saved to disk** — remembered the next time you open the
-  game, even after fully closing it.
+* **Procedurally-generated sound** — an engine hum that gets
+  higher-pitched as you shift up through the gears, a whoosh when DRS
+  kicks in, and a thud on crashing, all built out of math with
+  `pygame.mixer` — no sound files, same idea as the car sprite.
+* **Pause anytime** — press `P` mid-race (or hold JUMP + HOME together
+  on a controller) to freeze the race, dim the screen, and show PAUSED.
+* **High score, top-5 leaderboard, and your last team/track/mode are
+  all saved to disk** — remembered the next time you open the game,
+  even after fully closing it.
 * **Optional hardware controller support** — plug in a physical
   4-button pad built on an **ESP32**, talking to the game over a small
   custom USB-serial protocol, debounced on the firmware side and
-  drained-to-newest-line on the Python side so input never lags.
+  drained-to-newest-line on the Python side so input never lags. The
+  launcher **auto-detects** which serial port it's on, instead of
+  making you type it in.
 * **Two-layer architecture**: a CustomTkinter menu shell hands off to a
   pygame real-time race loop through a single `run_race(...)` call, and
   gets a plain dict back when the race ends.
@@ -108,16 +128,31 @@ pip install -r requirements.txt
 
 ### 3. (Optional) Set up a real controller
 Flash `firmware/endless_straight_controller.ino` onto an ESP32 with the
-Arduino IDE, wire up 4 buttons, and note which USB port it shows up as
--- you'll type that into the launcher in the next step. Skip this
-entirely to just use the keyboard.
+Arduino IDE and wire up 4 buttons. Skip this entirely to just use the
+keyboard -- and you don't need to know its port name either: the
+launcher lists connected devices for you automatically.
 
 ### 4. Run it
 ```
 python launcher.py
 ```
 *(Pick a team, a day/night mode, and a track (or leave it on RANDOM),
-optionally enter your controller's port, then click START RACE.)*
+optionally pick your controller's port from the dropdown, then click
+START RACE. Your picks are remembered for next time.)*
+
+---
+
+## 🧪 Running the Tests
+```
+pip install -r requirements-dev.txt
+pytest
+```
+Each mechanic (DRS, gravel, pausing, persistence, sound, the resize
+math, controller input, track generation) has its own test file in
+`tests/`, running headless (no real window or speakers needed) so it
+works the same on any machine, including in CI. This sits alongside
+`python game.py --selftest`, which is a quick end-to-end smoke test
+rather than a set of isolated, named assertions.
 
 ---
 
@@ -130,9 +165,11 @@ platform differences specifically accounted for in the code:
   a packaged app, or relative to the script folder otherwise -- both
   paths built with `os.path.join`, so there are no hardcoded `\` or `/`
   separators anywhere.
-* **Controller port names**: the launcher shows a different example in
-  the CONTROLLER PORT box depending on the detected OS -- `COM5`-style
-  on Windows, `/dev/tty.usbserial-...` on macOS, `/dev/ttyUSB0` on Linux.
+* **Controller port names**: the launcher auto-detects connected serial
+  devices with `serial.tools.list_ports`, so it doesn't matter that
+  Windows, macOS, and Linux all name ports differently (`COM5` vs.
+  `/dev/tty.usbserial-...` vs. `/dev/ttyUSB0`) -- you just pick one
+  from the list.
 * **Font fallback**: if the bundled font ever fails to load, the
   fallback list includes a font that's actually likely to be installed
   on each OS (Consolas on Windows, Menlo on macOS, DejaVu Sans Mono on
@@ -147,12 +184,13 @@ platform differences specifically accounted for in the code:
 * **The downloadable apps** are unsigned (no Apple/Microsoft developer
   certificate), so macOS and Windows both show a first-run warning --
   see the download table above for how to get past it.
-* **High score save location**: running from source, it's saved right
-  next to the game files (`high_score.json`). Running as a packaged
-  app, it's saved to the same per-user settings folder every other app
-  on your OS uses -- `%APPDATA%\TheF1Straight` on Windows,
-  `~/Library/Application Support/TheF1Straight` on macOS, or
-  `~/.local/share/TheF1Straight` (or `$XDG_DATA_HOME`) on Linux.
+* **Save file location**: running from source, your high score,
+  top-5 leaderboard, and last-used team/track/mode are all saved right
+  next to the game files (`high_score.json`, one file, several keys).
+  Running as a packaged app, it's saved to the same per-user settings
+  folder every other app on your OS uses -- `%APPDATA%\TheF1Straight`
+  on Windows, `~/Library/Application Support/TheF1Straight` on macOS,
+  or `~/.local/share/TheF1Straight` (or `$XDG_DATA_HOME`) on Linux.
 
 ---
 
@@ -189,12 +227,14 @@ never build up input lag.
 
 ### Menu ⇄ Race
 ```
-launcher.py: Launcher._start()  -> game.run_race(team_color, theme_mode, high_score, serial_port)
-game.py: run_race()             -> returns {"action": "home" | "quit", "high_score": int}
+launcher.py: Launcher._start()  -> game.run_race(team_color, theme_mode, high_score, serial_port, track)
+game.py: run_race()             -> returns {"action": "home" | "quit", "high_score": int, "score": int}
 ```
 The menu hides itself, waits for that one function call to return, then
 either shows itself again (`"home"`) or closes (`"quit"`). That's the
-entire connection between the two layers.
+entire connection between the two layers. The returned `"score"` (this
+race's own result, separate from `"high_score"`, your best ever) is
+what the launcher hands to `add_leaderboard_entry()` afterward.
 
 ---
 
@@ -222,11 +262,20 @@ entire connection between the two layers.
   generator (rectangles, triangles, or rounded hills, each with its own
   color and sizing) drives all four track themes, instead of needing
   separate hand-drawn art per track.
-* **Persistent local state** — the high score is read from and written
-  to a small JSON file in a proper per-user data directory when running
-  as a packaged app (never the app's own folder, which may not be
-  writable, and never the temporary PyInstaller extraction folder,
-  which is wiped after the app closes).
+* **Persistent local state** — the high score, top-5 leaderboard, and
+  last-used team/track/mode are all read from and written to a small
+  JSON file in a proper per-user data directory when running as a
+  packaged app (never the app's own folder, which may not be writable,
+  and never the temporary PyInstaller extraction folder, which is
+  wiped after the app closes).
+* **Procedural audio synthesis** — every sound effect is a raw PCM
+  waveform built sample-by-sample with `math.sin` and friends, wrapped
+  in a `pygame.mixer.Sound(buffer=...)`, instead of loaded from a file
+  -- the same "generate it, don't ship it" philosophy as the car sprite.
+* **Automated test suite** — `pytest` tests in `tests/`, each isolating
+  and asserting on one mechanic at a time (DRS, gravel, pausing,
+  persistence, sound, resize math, controller parsing, track
+  generation), run headlessly so they pass the same way locally and in CI.
 
 ---
 
@@ -237,6 +286,7 @@ entire connection between the two layers.
 * An ESP32 board + 4 push buttons -- optional, only for the hardware controller
 * Arduino IDE -- optional, only needed to flash the firmware
 * `pyinstaller` (via `requirements-dev.txt`) -- only needed to build the app yourself
+* `pytest` (via `requirements-dev.txt`) -- only needed to run the automated tests
 
 ---
 
@@ -249,5 +299,5 @@ respective owners.
 
 * **Font:** [Orbitron](https://github.com/google/fonts/tree/main/ofl/orbitron)
   by Matt McInerney, bundled under the [SIL Open Font License](assets/fonts/OFL.txt).
-* **Car sprite and all other visuals:** generated procedurally in code
-  -- no external art assets used.
+* **Car sprite, all other visuals, and every sound effect:** generated
+  procedurally in code -- no external art or audio assets used.

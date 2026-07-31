@@ -28,9 +28,13 @@ build/
 dist/
 *.spec
 
-# Your saved high score -- this is YOUR personal save data, made the
-# first time you play, not something the project ships with
+# Your saved high score, leaderboard, and last-used team/track/mode --
+# this is YOUR personal save data, made the first time you play, not
+# something the project ships with
 high_score.json
+
+# Leftovers from running the pytest suite in tests/
+.pytest_cache/
 
 # graphify -- a generated map of the code (report/HTML/cache), can be rebuilt any time
 graphify-out/
