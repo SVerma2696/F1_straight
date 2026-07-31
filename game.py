@@ -39,6 +39,9 @@ Cool things in this game
   built out of math, not sound files, just like the car picture.
 * Press P any time mid-race to pause -- the screen dims and everything
   freezes until you press P again.
+* Press M any time to mute or unmute -- handy if you'd rather race in
+  quiet. Your volume and mute setting are remembered for next time, just
+  like your high score.
 
 How to play
 -----------
@@ -47,6 +50,7 @@ How to play
     SHIFT                     Speed boost -- only works inside a green zone
     SPACE                     Play again after you crash
     P                         Pause / un-pause
+    M                         Mute / unmute
     H  or click HOME          After you crash: go back and pick a new team
     ESC                       Stop playing
     MODE button (top-left)    Pick AUTO (day turns to night on its own),
@@ -288,6 +292,18 @@ def save_last_setup(team_name, track, mode):
     _write_save_data({"last_team": team_name, "last_track": track, "last_mode": mode})
 
 
+def load_sound_settings():
+    """Read back your last volume and mute setting, so the game doesn't
+    reset to full volume every time you open it."""
+    data = _read_save_data()
+    return {"volume": float(data.get("volume", 1.0)), "muted": bool(data.get("muted", False))}
+
+
+def save_sound_settings(volume, muted):
+    """Remember your volume and mute setting, for next time."""
+    _write_save_data({"volume": float(volume), "muted": bool(muted)})
+
+
 def load_leaderboard():
     """Read the top-5 list of your best races ever. Each entry remembers
     the score, which team you were driving, and which track you were on."""
@@ -341,6 +357,35 @@ def load_font(size, bold=False):
 SOUND_RATE = 22050    # how many tiny sound snapshots we make every second
 _AUDIO_OK = False       # turns True once we know sound actually works on this computer
 _SOUND_CACHE = {}       # remembers sounds we've already built, this pygame session
+_VOLUME = 1.0            # how loud everything is, from 0.0 (silent) to 1.0 (full volume)
+_MUTED = False            # a quick on/off switch, separate from the volume level
+
+
+def set_volume(v):
+    """Set how loud everything is, from 0.0 (silent) to 1.0 (full volume)."""
+    global _VOLUME
+    _VOLUME = max(0.0, min(1.0, v))
+
+
+def get_volume():
+    return _VOLUME
+
+
+def set_muted(muted):
+    """Turn ALL sound on or off, without forgetting your volume setting --
+    un-muting brings you right back to the volume you had before."""
+    global _MUTED
+    _MUTED = bool(muted)
+
+
+def is_muted():
+    return _MUTED
+
+
+def _effective_volume():
+    # what a sound should ACTUALLY play at right now, combining the
+    # volume slider and the mute switch into one number
+    return 0.0 if _MUTED else _VOLUME
 
 
 def init_audio():
@@ -411,6 +456,7 @@ def play_click():
     """A short, high blip -- for menu buttons."""
     snd = _get_sound("click", lambda: _make_wave(880, 0.05, volume=0.25, wave="square"))
     if snd:
+        snd.set_volume(_effective_volume())
         snd.play()
 
 
@@ -418,6 +464,7 @@ def play_whoosh():
     """A rising whoosh -- for the moment DRS boost kicks in."""
     snd = _get_sound("whoosh", lambda: _make_sweep(300, 950, 0.3, volume=0.45))
     if snd:
+        snd.set_volume(_effective_volume())
         snd.play()
 
 
@@ -425,6 +472,7 @@ def play_thud():
     """A short, low thud -- for crashing, right alongside the white flash."""
     snd = _get_sound("thud", lambda: _make_wave(85, 0.35, volume=0.6, wave="sine"))
     if snd:
+        snd.set_volume(_effective_volume())
         snd.play()
 
 
@@ -459,8 +507,11 @@ class EngineSound:
                               _make_wave(f, d, volume=0.16, wave="saw", fade_out=False))
             if snd:
                 self.channel.play(snd, loops=-1)
-        # a little quieter while boosting, so the whoosh cuts through clearly
-        self.channel.set_volume(0.6 if boosting else 1.0)
+        # a little quieter while boosting, so the whoosh cuts through
+        # clearly, then scaled by however loud (or muted) you've set
+        # everything to be
+        base = 0.6 if boosting else 1.0
+        self.channel.set_volume(base * _effective_volume())
 
     def stop(self):
         if self.channel is not None:
@@ -684,6 +735,7 @@ class InputManager:
         self.actions = {a: False for a in self.ACTIONS}
         self.serial = None
         self._buf = b""     # leftover bits of text from the controller we haven't used yet
+        self._last_drs_ready_sent = None   # so we only tell the controller when this actually changes
         if serial_port:
             try:
                 import serial   # only needed if you're actually using a controller
@@ -740,6 +792,21 @@ class InputManager:
 
     def is_active(self, action):
         return self.actions.get(action, False)
+
+    def send_drs_ready(self, ready):
+        """Tell a real controller whether DRS is ready right now, so an
+        optional LED on it can light up -- a real-world echo of the
+        on-screen "DRS READY" badge. Does nothing at all if we're just
+        using the keyboard, and only actually sends a message when
+        ready/not-ready just changed, so we don't spam the USB cable
+        with the same message every single frame."""
+        if self.serial is None or ready == self._last_drs_ready_sent:
+            return
+        self._last_drs_ready_sent = ready
+        try:
+            self.serial.write(b"LED,1\n" if ready else b"LED,0\n")
+        except OSError:
+            pass   # the controller got unplugged or something -- just skip it
 
 
 class _DictInput:
@@ -1603,6 +1670,9 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
                 return {"action": "quit", "high_score": game.high_score, "score": int(game.score)}
             if event.type == pygame.KEYDOWN and event.key == pygame.K_p and game.state == RUNNING:
                 game.paused = not game.paused   # P pauses and un-pauses -- only while still racing
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                set_muted(not is_muted())
+                save_sound_settings(get_volume(), is_muted())   # remember it for next time too
 
             if event.type == pygame.VIDEORESIZE:
                 # the player dragged an edge, or clicked maximize/restore
@@ -1659,6 +1729,7 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
             engine.update(game.gear, game.boosting)
         else:
             engine.stop()
+        inp.send_drs_ready(game.drs_available)   # lights up a real LED on the controller, if there is one
         game.render(game_surface)
         theme.draw(game_surface, game.palette(), small_font)
 

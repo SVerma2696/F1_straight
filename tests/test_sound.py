@@ -31,3 +31,19 @@ def test_engine_sound_switches_loops_when_gear_changes():
     assert engine.current_gear == 4
     engine.stop()
     assert engine.current_gear is None
+
+
+def test_volume_is_clamped_between_zero_and_one():
+    g.set_volume(1.5)
+    assert g.get_volume() == 1.0
+    g.set_volume(-0.5)
+    assert g.get_volume() == 0.0
+
+
+def test_muting_silences_the_effective_volume_without_forgetting_it():
+    g.set_volume(0.7)
+    g.set_muted(True)
+    assert g.is_muted() is True
+    assert g._effective_volume() == 0.0
+    g.set_muted(False)
+    assert g._effective_volume() == 0.7   # back to what it was before muting

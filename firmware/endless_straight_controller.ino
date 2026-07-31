@@ -33,6 +33,15 @@
   pressed, and LOW the moment it IS pressed (since pressing connects the
   pin straight to GND).
 
+  Optional: a DRS-ready LED
+  ------------------------------
+  Wire an LED (with a resistor, like any LED) to GPIO 27 and GND, and it
+  will light up whenever the game says a DRS zone is ready to boost in
+  -- a real-world echo of the on-screen "DRS READY" badge. This is
+  completely optional; the game works fine without it.
+
+    DRS LED  ->  GPIO 27  and GND (through a resistor)
+
   How it talks to the computer
   --------------------------------
   Once every loop, this program sends one line of text over the USB
@@ -43,6 +52,11 @@
   The four numbers are always in this order: jump, duck, drs, home.
   A 1 means "this button is being held down right now," a 0 means
   "it's not." The game reads these lines and moves the car.
+
+  The game also sends messages BACK to us, to control the DRS LED:
+
+      LED,1     (turn the LED on -- DRS is ready right now)
+      LED,0     (turn the LED off)
 
   How to put this onto the board
   -----------------------------------
@@ -55,6 +69,9 @@ const int PIN_JUMP = 32;
 const int PIN_DUCK = 33;
 const int PIN_DRS  = 25;
 const int PIN_HOME = 26;
+
+// The optional LED that lights up when DRS is ready to use
+const int PIN_DRS_LED = 27;
 
 const int NUM_BUTTONS = 4;
 const int BUTTON_PINS[NUM_BUTTONS] = {PIN_JUMP, PIN_DUCK, PIN_DRS, PIN_HOME};
@@ -69,6 +86,8 @@ bool stableState[NUM_BUTTONS];        // the reading we currently trust
 bool lastRawReading[NUM_BUTTONS];     // the very last reading we saw, before trusting it
 unsigned long lastChangeTime[NUM_BUTTONS];   // when that raw reading last changed
 
+String incomingLine = "";   // the message from the game we're still building up, one letter at a time
+
 
 void setup() {
   Serial.begin(115200);
@@ -81,6 +100,28 @@ void setup() {
     stableState[i] = reading;
     lastRawReading[i] = reading;
     lastChangeTime[i] = millis();
+  }
+
+  pinMode(PIN_DRS_LED, OUTPUT);
+  digitalWrite(PIN_DRS_LED, LOW);
+}
+
+
+void readFeedbackFromGame() {
+  // Read whatever the game has sent us so far, one letter at a time, so
+  // we never sit around waiting for a message that hasn't finished
+  // arriving yet -- if nothing's here, this just does nothing at all.
+  while (Serial.available() > 0) {
+    char c = Serial.read();
+    if (c == '\n') {
+      if (incomingLine.startsWith("LED,")) {
+        bool ledOn = incomingLine.charAt(4) == '1';
+        digitalWrite(PIN_DRS_LED, ledOn ? HIGH : LOW);
+      }
+      incomingLine = "";
+    } else if (c != '\r') {
+      incomingLine += c;
+    }
   }
 }
 
@@ -112,6 +153,10 @@ void loop() {
     }
   }
   Serial.println();
+
+  // Step 3: check if the game sent us anything back, like a DRS-ready
+  // LED command
+  readFeedbackFromGame();
 
   delay(10);   // a tiny pause -- about 100 lines a second, plenty fast for a game
 }

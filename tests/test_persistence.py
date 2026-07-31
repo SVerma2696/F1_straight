@@ -62,3 +62,14 @@ def test_saving_last_setup_does_not_erase_the_leaderboard(monkeypatch, tmp_path)
     g.add_leaderboard_entry(999, "Haas", "monaco")
     g.save_last_setup("Williams", "monza", "auto")
     assert g.load_leaderboard()[0]["score"] == 999
+
+
+def test_sound_settings_have_sensible_defaults(monkeypatch, tmp_path):
+    _use_temp_save_folder(monkeypatch, tmp_path)
+    assert g.load_sound_settings() == {"volume": 1.0, "muted": False}
+
+
+def test_sound_settings_round_trip(monkeypatch, tmp_path):
+    _use_temp_save_folder(monkeypatch, tmp_path)
+    g.save_sound_settings(0.4, True)
+    assert g.load_sound_settings() == {"volume": 0.4, "muted": True}

@@ -87,15 +87,21 @@ f1_straight/
   `pygame.mixer` — no sound files, same idea as the car sprite.
 * **Pause anytime** — press `P` mid-race (or hold JUMP + HOME together
   on a controller) to freeze the race, dim the screen, and show PAUSED.
+* **Mute or turn the volume down** — press `M` any time to mute, or set
+  a volume slider in the launcher; your setting is saved for next time.
 * **High score, top-5 leaderboard, and your last team/track/mode are
   all saved to disk** — remembered the next time you open the game,
   even after fully closing it.
+* **Leaderboard filtering and sorting** — the LEADERBOARD window can
+  filter your top 5 races down to one team or track, and sort by score,
+  team, or track.
 * **Optional hardware controller support** — plug in a physical
   4-button pad built on an **ESP32**, talking to the game over a small
   custom USB-serial protocol, debounced on the firmware side and
   drained-to-newest-line on the Python side so input never lags. The
   launcher **auto-detects** which serial port it's on, instead of
-  making you type it in.
+  making you type it in. The game also talks back: an optional LED on
+  the controller lights up whenever DRS is ready to use.
 * **Two-layer architecture**: a CustomTkinter menu shell hands off to a
   pygame real-time race loop through a single `run_race(...)` call, and
   gets a plain dict back when the race ends.
@@ -184,9 +190,10 @@ platform differences specifically accounted for in the code:
 * **The downloadable apps** are unsigned (no Apple/Microsoft developer
   certificate), so macOS and Windows both show a first-run warning --
   see the download table above for how to get past it.
-* **Save file location**: running from source, your high score,
-  top-5 leaderboard, and last-used team/track/mode are all saved right
-  next to the game files (`high_score.json`, one file, several keys).
+* **Save file location**: running from source, your high score, top-5
+  leaderboard, last-used team/track/mode, and volume/mute setting are
+  all saved right next to the game files (`high_score.json`, one file,
+  several keys).
   Running as a packaged app, it's saved to the same per-user settings
   folder every other app on your OS uses -- `%APPDATA%\TheF1Straight`
   on Windows, `~/Library/Application Support/TheF1Straight` on macOS,
@@ -225,6 +232,17 @@ ESP32 serial CSV frame  -> InputManager._poll_serial    -> is_active("jump", "du
 line and discards any that piled up behind it, so a busy frame can
 never build up input lag.
 
+### Output (game -> controller)
+```
+game.py: Game.drs_available  -> InputManager.send_drs_ready(ready) -> "LED,1\n" / "LED,0\n" over serial
+firmware: readFeedbackFromGame() -> lights (or turns off) the optional DRS-ready LED
+```
+The serial link is two-way: the controller tells the game which
+buttons are pressed, and the game tells the controller whether DRS is
+ready right now, so an optional LED can echo the on-screen badge.
+`send_drs_ready` only actually writes a message when the ready/not-ready
+state just changed, so it doesn't spam the USB cable every frame.
+
 ### Menu ⇄ Race
 ```
 launcher.py: Launcher._start()  -> game.run_race(team_color, theme_mode, high_score, serial_port, track)
@@ -249,7 +267,10 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
   colors at runtime and recolored per team, instead of loading image files.
 * **Serial protocol design** — a compact, debounced, framed CSV
   protocol between microcontroller firmware and a desktop app, built to
-  tolerate boot noise and dropped/garbled frames without crashing.
+  tolerate boot noise and dropped/garbled frames without crashing, now
+  **bidirectional**: the desktop app also sends short text commands
+  back to the firmware to drive an LED, parsed without ever blocking
+  the firmware's own button-reading loop.
 * **Finite-state game loop** — a small `RUNNING` / `GAME_OVER` state
   machine driving restart timers, crash flashes, and score-gated
   day/night transitions.
@@ -262,12 +283,12 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
   generator (rectangles, triangles, or rounded hills, each with its own
   color and sizing) drives all four track themes, instead of needing
   separate hand-drawn art per track.
-* **Persistent local state** — the high score, top-5 leaderboard, and
-  last-used team/track/mode are all read from and written to a small
-  JSON file in a proper per-user data directory when running as a
-  packaged app (never the app's own folder, which may not be writable,
-  and never the temporary PyInstaller extraction folder, which is
-  wiped after the app closes).
+* **Persistent local state** — the high score, top-5 leaderboard,
+  last-used team/track/mode, and volume/mute setting are all read from
+  and written to a small JSON file in a proper per-user data directory
+  when running as a packaged app (never the app's own folder, which may
+  not be writable, and never the temporary PyInstaller extraction
+  folder, which is wiped after the app closes).
 * **Procedural audio synthesis** — every sound effect is a raw PCM
   waveform built sample-by-sample with `math.sin` and friends, wrapped
   in a `pygame.mixer.Sound(buffer=...)`, instead of loaded from a file

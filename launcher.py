@@ -63,6 +63,7 @@ INSTRUCTIONS = [
         "DOWN / S" + " " * 10 + "Aero tuck (duck)\n"
         "SHIFT" + " " * 14 + "DRS boost -- only inside a green DRS zone\n"
         "P" + " " * 19 + "Pause / un-pause\n"
+        "M" + " " * 19 + "Mute / unmute\n"
         "SPACE" + " " * 14 + "Restart after a crash\n"
         "H" + " " * 19 + "After a crash: back to this menu\n"
         "ESC" + " " * 16 + "Quit the race"
@@ -145,43 +146,103 @@ class InstructionsWindow(ctk.CTkToplevel):
         self.destroy()
 
 
+def _track_label(track_key):
+    # turn a saved track key like "monza" back into its pretty display
+    # name, or "Random" if that race didn't use a fixed track
+    cfg = g.TRACKS.get(track_key)
+    return cfg["label"] if cfg else "Random"
+
+
 class LeaderboardWindow(ctk.CTkToplevel):
-    """The little pop-up window showing your best 5 races ever."""
+    """The little pop-up window showing your best 5 races ever, with a
+    way to filter down to just one team or track, and to sort by
+    whichever column you care about."""
+
+    SORT_CHOICES = ["SCORE (best first)", "TEAM (A-Z)", "TRACK (A-Z)"]
 
     def __init__(self, master):
         super().__init__(master)
         self.title("Leaderboard")
-        self.geometry("420x420")
+        self.geometry("440x520")
         self.resizable(True, True)
-        self.minsize(340, 300)
+        self.minsize(360, 360)
         self.transient(master)
         self.grab_set()
 
+        self.board = g.load_leaderboard()   # the raw top-5, loaded once when this window opens
+
         ctk.CTkLabel(self, text="TOP 5 RACES",
-                     font=("Segoe UI", 20, "bold")).pack(pady=(20, 12))
+                     font=("Segoe UI", 20, "bold")).pack(pady=(20, 10))
 
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=24)
+        # filter + sort controls -- only worth showing if there's
+        # actually more than one team/track to tell apart
+        teams_seen = sorted({e.get("team", "?") for e in self.board})
+        tracks_seen = sorted({_track_label(e.get("track")) for e in self.board})
+        controls = ctk.CTkFrame(self, fg_color="transparent")
+        controls.pack(pady=(0, 8))
+        ctk.CTkLabel(controls, text="TEAM", font=("Segoe UI", 10), text_color="gray60").grid(row=0, column=0)
+        self.team_filter = ctk.CTkOptionMenu(controls, values=["ALL"] + teams_seen,
+                                              command=self._on_filter_change, width=110)
+        self.team_filter.set("ALL")
+        self.team_filter.grid(row=1, column=0, padx=4)
+        ctk.CTkLabel(controls, text="TRACK", font=("Segoe UI", 10), text_color="gray60").grid(row=0, column=1)
+        self.track_filter = ctk.CTkOptionMenu(controls, values=["ALL"] + tracks_seen,
+                                               command=self._on_filter_change, width=110)
+        self.track_filter.set("ALL")
+        self.track_filter.grid(row=1, column=1, padx=4)
+        ctk.CTkLabel(controls, text="SORT BY", font=("Segoe UI", 10), text_color="gray60").grid(row=0, column=2)
+        self.sort_menu = ctk.CTkOptionMenu(controls, values=self.SORT_CHOICES,
+                                            command=self._on_filter_change, width=150)
+        self.sort_menu.set(self.SORT_CHOICES[0])
+        self.sort_menu.grid(row=1, column=2, padx=4)
 
-        board = g.load_leaderboard()
-        if not board:
-            ctk.CTkLabel(body, text="No races finished yet -- go set a record!",
-                         font=("Segoe UI", 12), text_color="gray60").pack(pady=20)
-        else:
-            for i, entry in enumerate(board, start=1):
-                track_cfg = g.TRACKS.get(entry.get("track"))
-                track_label = track_cfg["label"] if track_cfg else "Random"
-                row = ctk.CTkFrame(body, fg_color="transparent")
-                row.pack(fill="x", pady=4)
-                ctk.CTkLabel(row, text=f"#{i}", font=("Segoe UI", 13, "bold"),
-                             text_color="#E10600", width=32, anchor="w").pack(side="left")
-                ctk.CTkLabel(row, text=f"{entry.get('score', 0):05d}", font=("Consolas", 13, "bold"),
-                             anchor="w", width=80).pack(side="left")
-                ctk.CTkLabel(row, text=f"{entry.get('team', '?')} -- {track_label}",
-                             font=("Segoe UI", 12), text_color="gray70", anchor="w").pack(side="left")
+        self.body = ctk.CTkFrame(self, fg_color="transparent")
+        self.body.pack(fill="both", expand=True, padx=24)
+        self._render_rows()
 
         ctk.CTkButton(self, text="CLOSE", width=140, height=36, corner_radius=8,
-                      command=self._close).pack(pady=18)
+                      command=self._close).pack(pady=14)
+
+    def _on_filter_change(self, _value):
+        g.play_click()
+        self._render_rows()
+
+    def _render_rows(self):
+        # wipe out whatever rows are showing now, then draw fresh ones
+        # that match the current filter + sort choice
+        for child in self.body.winfo_children():
+            child.destroy()
+
+        rows = list(self.board)
+        if self.team_filter.get() != "ALL":
+            rows = [e for e in rows if e.get("team", "?") == self.team_filter.get()]
+        if self.track_filter.get() != "ALL":
+            rows = [e for e in rows if _track_label(e.get("track")) == self.track_filter.get()]
+
+        sort_choice = self.sort_menu.get()
+        if sort_choice.startswith("TEAM"):
+            rows.sort(key=lambda e: e.get("team", "?"))
+        elif sort_choice.startswith("TRACK"):
+            rows.sort(key=lambda e: _track_label(e.get("track")))
+        else:
+            rows.sort(key=lambda e: e.get("score", 0), reverse=True)
+
+        if not rows:
+            msg = "No races finished yet -- go set a record!" if not self.board \
+                else "No races match that filter."
+            ctk.CTkLabel(self.body, text=msg, font=("Segoe UI", 12),
+                         text_color="gray60").pack(pady=20)
+            return
+
+        for i, entry in enumerate(rows, start=1):
+            row = ctk.CTkFrame(self.body, fg_color="transparent")
+            row.pack(fill="x", pady=4)
+            ctk.CTkLabel(row, text=f"#{i}", font=("Segoe UI", 13, "bold"),
+                         text_color="#E10600", width=32, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=f"{entry.get('score', 0):05d}", font=("Consolas", 13, "bold"),
+                         anchor="w", width=80).pack(side="left")
+            ctk.CTkLabel(row, text=f"{entry.get('team', '?')} -- {_track_label(entry.get('track'))}",
+                         font=("Segoe UI", 12), text_color="gray70", anchor="w").pack(side="left")
 
     def _close(self):
         g.play_click()
@@ -194,14 +255,19 @@ class Launcher(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("The F1 Straight")
-        self.geometry("640x760")
+        self.geometry("640x830")
         # lets you maximize (or just drag bigger) the menu window too --
         # the layout stays anchored at the top instead of stretching,
         # but the maximize button now actually does something
         self.resizable(True, True)
-        self.minsize(640, 760)
+        self.minsize(640, 830)
 
         g.init_audio()   # turn sound on for menu clicks (a race will also do this itself when it starts)
+
+        # bring back whatever volume/mute setting you left it on last time
+        sound_setup = g.load_sound_settings()
+        g.set_volume(sound_setup["volume"])
+        g.set_muted(sound_setup["muted"])
 
         # load whatever high score, last team/track/mode were saved from
         # last time you played, so nothing resets just because you
@@ -287,6 +353,20 @@ class Launcher(ctk.CTk):
         self.port_menu.pack(side="left")
         ctk.CTkButton(port_row, text="⟳", width=28, command=self._refresh_ports).pack(side="left", padx=(4, 0))
 
+        # a mute button plus a slider for how loud everything is -- both
+        # apply right away and are remembered for next time
+        ctk.CTkLabel(mode_frame, text="VOLUME", font=("Segoe UI", 11),
+                     text_color="gray60").pack(anchor="e", pady=(10, 0))
+        vol_row = ctk.CTkFrame(mode_frame, fg_color="transparent")
+        vol_row.pack()
+        self.mute_btn = ctk.CTkButton(vol_row, text=self._speaker_icon(), width=28,
+                                       command=self._toggle_mute)
+        self.mute_btn.pack(side="left")
+        self.volume_slider = ctk.CTkSlider(vol_row, from_=0, to=100, width=110,
+                                            command=self._on_volume)
+        self.volume_slider.set(g.get_volume() * 100)
+        self.volume_slider.pack(side="left", padx=(4, 0))
+
         self.hi_label = ctk.CTkLabel(self, text=f"High score: {self.high_score:05d}",
                                       font=("Segoe UI", 12), text_color="gray60")
         self.hi_label.pack(pady=(10, 0))
@@ -335,6 +415,21 @@ class Launcher(ctk.CTk):
 
     def _on_track(self, value):
         g.play_click()
+
+    def _speaker_icon(self):
+        # a little speaker (or muted-speaker) picture for the mute button
+        return "\U0001F507" if g.is_muted() else "\U0001F50A"
+
+    def _toggle_mute(self):
+        g.set_muted(not g.is_muted())
+        g.save_sound_settings(g.get_volume(), g.is_muted())
+        self.mute_btn.configure(text=self._speaker_icon())
+        if not g.is_muted():
+            g.play_click()   # only actually audible once we've just un-muted
+
+    def _on_volume(self, value):
+        g.set_volume(value / 100)
+        g.save_sound_settings(g.get_volume(), g.is_muted())
 
     def _refresh_ports(self):
         # look again for connected controllers -- handy if you plugged
