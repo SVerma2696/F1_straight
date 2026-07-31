@@ -35,8 +35,10 @@ they're always in sync with each other.
 ```
 f1_straight/
 ├── .github/
+│   ├── dependabot.yml                        # Weekly automated dependency-update checks
 │   └── workflows/
-│       └── release.yml                      # Builds + publishes the 3 downloads above
+│       ├── codeql.yml                        # Automated code-scanning for security issues
+│       └── release.yml                       # Builds + publishes the 3 downloads above
 ├── assets/
 │   └── fonts/
 │       ├── OFL.txt                          # License for the Orbitron font
@@ -61,7 +63,8 @@ f1_straight/
 ├── pytest.ini                     # Tells pytest where to find the tests/ folder
 ├── README.md                       # Project documentation
 ├── requirements.txt                  # Python dependencies (just to play from source)
-└── requirements-dev.txt                # Adds PyInstaller and pytest (only needed to build/test)
+├── requirements-dev.txt                # Adds PyInstaller and pytest (only needed to build/test)
+└── SECURITY.md                           # How to report a security problem
 ```
 
 ---
@@ -219,6 +222,22 @@ step, it means this repo's GitHub Actions token defaulted to
 read-only. That's fixed by the `permissions: contents: write` line
 near the top of the workflow file -- if you ever see this error again,
 that's the line to check first.
+
+---
+
+## 🔒 Security
+* **Reporting a problem:** see [SECURITY.md](SECURITY.md) for how to
+  report a security issue privately.
+* **Code scanning:** [.github/workflows/codeql.yml](.github/workflows/codeql.yml)
+  runs CodeQL on every push to `main`, every pull request, and once a
+  week on its own, to catch common unsafe coding patterns automatically.
+* **Dependency updates:** [.github/dependabot.yml](.github/dependabot.yml)
+  checks our Python dependencies and GitHub Actions weekly and opens a
+  pull request by itself when a newer version is available.
+* **Dependabot alerts** and **private vulnerability reporting** are
+  turned on for this repo under Settings -> Code security and
+  analysis -- those are one-time toggles in GitHub's own settings
+  page, not something a file in this repo can turn on by itself.
 
 ---
 

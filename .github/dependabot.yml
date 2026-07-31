@@ -1,0 +1,18 @@
+# This file tells GitHub's robot helper, Dependabot, to check our
+# dependencies every week and open a pull request by itself whenever
+# one of them has a newer version -- so we don't have to remember to
+# check by hand, and old, possibly-unsafe versions don't quietly pile up.
+
+version: 2
+updates:
+  # Our Python dependencies -- requirements.txt and requirements-dev.txt
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # The GitHub Actions used in .github/workflows/ (like actions/checkout)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
