@@ -46,3 +46,14 @@ def test_pausing_does_not_end_the_race():
     gm.paused = True
     gm.step({})
     assert gm.state == g.RUNNING
+
+
+def test_frames_survived_does_not_count_paused_time():
+    gm = _fresh_game()
+    for _ in range(20):
+        gm.step({})
+    frames_before = gm.frames_survived
+    gm.paused = True
+    for _ in range(20):
+        gm.step({})
+    assert gm.frames_survived == frames_before

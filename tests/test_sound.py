@@ -47,3 +47,52 @@ def test_muting_silences_the_effective_volume_without_forgetting_it():
     assert g._effective_volume() == 0.0
     g.set_muted(False)
     assert g._effective_volume() == 0.7   # back to what it was before muting
+
+
+class _FakeEngine:
+    """Stands in for EngineSound, just remembering whether update() or
+    stop() got called -- so we can check run_race()'s pause/engine
+    wiring without needing a real window or a real sound card."""
+
+    def __init__(self):
+        self.updated = False
+        self.stopped = False
+
+    def update(self, gear, boosting):
+        self.updated = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def _fresh_game():
+    return g.Game(team_color=g.TEAMS[0][1], track="monza")
+
+
+def test_pausing_stops_the_engine_sound():
+    # this is the exact regression a reviewer flagged: pausing must
+    # silence the engine hum, not just freeze the car
+    gm = _fresh_game()
+    gm.paused = True
+    engine = _FakeEngine()
+    g._drive_engine_sound(engine, gm)
+    assert engine.stopped is True
+    assert engine.updated is False
+
+
+def test_engine_sound_runs_while_actively_racing():
+    gm = _fresh_game()
+    gm.paused = False
+    engine = _FakeEngine()
+    g._drive_engine_sound(engine, gm)
+    assert engine.updated is True
+    assert engine.stopped is False
+
+
+def test_engine_sound_stops_after_a_crash():
+    gm = _fresh_game()
+    gm.state = g.GAME_OVER
+    engine = _FakeEngine()
+    g._drive_engine_sound(engine, gm)
+    assert engine.stopped is True
+    assert engine.updated is False

@@ -92,6 +92,12 @@ f1_straight/
   on a controller) to freeze the race, dim the screen, and show PAUSED.
 * **Mute or turn the volume down** — press `M` any time to mute, or set
   a volume slider in the launcher; your setting is saved for next time.
+* **Game-over stats** — crashing shows how many DRS zones you used, how
+  many gravel patches you hit, and how long you survived, alongside your score.
+* **Standard gamepad support** — plug in an Xbox, PlayStation, or
+  Nintendo Switch Pro controller and it just works, right alongside the
+  keyboard, no setup needed. (Still separate from the optional
+  hand-built ESP32 controller below.)
 * **High score, top-5 leaderboard, and your last team/track/mode are
   all saved to disk** — remembered the next time you open the game,
   even after fully closing it.
@@ -244,12 +250,15 @@ that's the line to check first.
 ## 🔌 System Integrations (Data Flow)
 ### Input
 ```
-Keyboard keys           -> InputManager._poll_keyboard -> is_active("jump", "duck", "boost", "home")
-ESP32 serial CSV frame  -> InputManager._poll_serial    -> is_active("jump", "duck", "boost", "home")
+Keyboard keys              -> InputManager._poll_keyboard -> is_active("jump", "duck", "boost", "home")
+Xbox/PlayStation/Switch pad -> InputManager._poll_gamepad  -> is_active("jump", "duck", "boost", "home")
+ESP32 serial CSV frame     -> InputManager._poll_serial    -> is_active("jump", "duck", "boost", "home")
 ```
 **Note:** the serial reader always acts on only the newest complete
 line and discards any that piled up behind it, so a busy frame can
-never build up input lag.
+never build up input lag. The keyboard and a gamepad are always
+checked together (either one can trigger an action); a custom serial
+controller, being a dedicated setup, replaces both instead.
 
 ### Output (game -> controller)
 ```
@@ -316,6 +325,10 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
   and asserting on one mechanic at a time (DRS, gravel, pausing,
   persistence, sound, resize math, controller parsing, track
   generation), run headlessly so they pass the same way locally and in CI.
+* **Cross-brand gamepad support** — one set of button numbers works for
+  Xbox, PlayStation, and Nintendo Switch Pro controllers alike, since
+  `pygame.joystick` lines them up consistently through SDL's built-in
+  controller database instead of needing per-brand code.
 
 ---
 

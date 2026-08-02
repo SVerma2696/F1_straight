@@ -42,6 +42,11 @@ Cool things in this game
 * Press M any time to mute or unmute -- handy if you'd rather race in
   quiet. Your volume and mute setting are remembered for next time, just
   like your high score.
+* When you crash, the game-over screen shows a few quick numbers about
+  that race -- how many DRS zones you used, how many gravel patches you
+  hit, and how long you survived.
+* Plug in an Xbox, PlayStation, or Nintendo Switch Pro controller and it
+  just works, right alongside the keyboard -- no setup needed.
 
 How to play
 -----------
@@ -481,6 +486,19 @@ def play_thud():
 _ENGINE_GEAR_FREQS = (55, 65, 78, 92, 110, 130, 155, 185)
 
 
+def _drive_engine_sound(engine, game):
+    """Decide whether the engine hum should be playing right now, and at
+    what pitch. Pulled out into its own tiny function (instead of being
+    written straight into run_race()'s big loop) so it's easy to test on
+    its own, without needing a real window or event loop -- the engine
+    should ONLY hum while you're actively racing, not while paused and
+    not after a crash."""
+    if game.state == RUNNING and not game.paused:
+        engine.update(game.gear, game.boosting)
+    else:
+        engine.stop()
+
+
 class EngineSound:
     """Plays a looping engine hum whose pitch matches your current gear,
     on its own dedicated sound channel so it never gets cut off by the
@@ -714,26 +732,48 @@ def surface_from_grid(grid):
 # --------------------------------------------------------------------------- #
 class InputManager:
     """
-    This is the ONE place in the whole game that knows about the keyboard
-    (or a real button controller, if you plug one in).
+    This is the ONE place in the whole game that knows about the
+    keyboard, a plugged-in gamepad, or a real button controller you
+    built yourself.
 
     Everywhere else, the game just asks "is_active('jump')?" -- it never
-    looks at the keyboard directly, and it doesn't care whether the
-    answer came from a keyboard or a real controller wired up to a
-    little computer chip.
+    looks at any of those directly, and it doesn't care which one the
+    answer came from.
 
-    Phase 1: check the keyboard (this is the normal, default way to play).
-    Phase 2: check a real 4-button controller instead, sent over a USB
-    cable. Pass serial_port="COM5" (or whatever port your controller
-    shows up as) to use it. If we can't open that port for any reason,
-    we just fall back to the keyboard, so the game always still works.
+    Phase 1: check the keyboard (this always runs, no setup needed).
+    Phase 1.5: also check a plugged-in gamepad -- an Xbox, PlayStation,
+    or Nintendo Switch Pro controller all work the same way here,
+    thanks to pygame lining their buttons up the same regardless of
+    brand. Its buttons work ALONGSIDE the keyboard the whole time, so
+    you can freely mix the two.
+    Phase 2: check a real 4-button controller you built yourself,
+    instead, sent over a USB cable. Pass serial_port="COM5" (or whatever
+    port your controller shows up as) to use it -- this replaces the
+    keyboard and gamepad entirely, since it's a dedicated setup. If we
+    can't open that port for any reason, we just fall back to the
+    keyboard, so the game always still works.
     """
 
     ACTIONS = ("jump", "duck", "left", "right", "boost", "home")
 
+    # Button numbers for a plugged-in gamepad. Xbox, PlayStation, and
+    # Nintendo Switch Pro controllers all use different button numbers
+    # deep down, but pygame (through SDL's controller database) lines
+    # them up the same way for us, so one set of numbers works for all
+    # three brands:
+    #   0 = the bottom face button   (Xbox A / PlayStation Cross / Switch B)
+    #   2 = the left face button     (Xbox X / PlayStation Square / Switch Y)
+    #   5 = the right shoulder button (Xbox RB / PlayStation R1 / Switch R)
+    #   7 = the start/options/plus button
+    GAMEPAD_JUMP_BUTTONS = (0,)
+    GAMEPAD_DUCK_BUTTONS = (2,)
+    GAMEPAD_BOOST_BUTTONS = (5,)
+    GAMEPAD_HOME_BUTTONS = (7,)
+
     def __init__(self, serial_port=None, baud=115200):
         self.actions = {a: False for a in self.ACTIONS}
         self.serial = None
+        self.gamepad = None
         self._buf = b""     # leftover bits of text from the controller we haven't used yet
         self._last_drs_ready_sent = None   # so we only tell the controller when this actually changes
         if serial_port:
@@ -745,11 +785,24 @@ class InputManager:
             except Exception as e:
                 print(f"[input] {serial_port} unavailable ({e}); using keyboard")
 
+        if self.serial is None:
+            # a hand-built serial controller is a dedicated setup, so we
+            # only bother looking for a plugged-in gamepad when one
+            # ISN'T being used
+            try:
+                pygame.joystick.init()
+                if pygame.joystick.get_count() > 0:
+                    self.gamepad = pygame.joystick.Joystick(0)
+            except pygame.error:
+                self.gamepad = None   # no gamepad support on this computer -- keyboard still works fine
+
     def update(self):
         if self.serial is not None:
             self._poll_serial()
-        else:
-            self._poll_keyboard()
+            return
+        self._poll_keyboard()
+        if self.gamepad is not None:
+            self._poll_gamepad()
 
     def _poll_keyboard(self):
         keys = pygame.key.get_pressed()
@@ -759,6 +812,29 @@ class InputManager:
         self.actions["home"] = keys[pygame.K_h]
         self.actions["left"] = keys[pygame.K_LEFT] or keys[pygame.K_a]     # not used yet -- saved for later
         self.actions["right"] = keys[pygame.K_RIGHT] or keys[pygame.K_d]   # not used yet -- saved for later
+
+    def _poll_gamepad(self):
+        """Read a plugged-in gamepad and OR its buttons in on top of
+        whatever the keyboard already said -- so either one can trigger
+        an action, and you never have to choose just one."""
+        try:
+            pygame.event.pump()   # lets pygame's joystick system see the very latest button presses
+            n = self.gamepad.get_numbuttons()
+
+            def any_pressed(indices):
+                return any(i < n and self.gamepad.get_button(i) for i in indices)
+
+            duck = any_pressed(self.GAMEPAD_DUCK_BUTTONS)
+            if self.gamepad.get_numhats() > 0:
+                _, hat_y = self.gamepad.get_hat(0)
+                duck = duck or hat_y < 0   # the D-pad pressed down also ducks
+
+            self.actions["jump"] = self.actions["jump"] or any_pressed(self.GAMEPAD_JUMP_BUTTONS)
+            self.actions["duck"] = self.actions["duck"] or duck
+            self.actions["boost"] = self.actions["boost"] or any_pressed(self.GAMEPAD_BOOST_BUTTONS)
+            self.actions["home"] = self.actions["home"] or any_pressed(self.GAMEPAD_HOME_BUTTONS)
+        except pygame.error:
+            self.gamepad = None   # it got unplugged or something -- just fall back to the keyboard
 
     def _poll_serial(self):
         """Read whatever the controller has sent so far, and use only the
@@ -1123,6 +1199,12 @@ class Game:
         self.paused = False           # freezes the whole race in place until you un-pause it
         self.just_boosted = False     # true for exactly one frame: the frame DRS boost switches on
         self.just_crashed = False     # true for exactly one frame: the frame you hit something
+        # a few simple counters, just for the game-over screen -- how
+        # this particular race went, not shown anywhere during the race
+        # itself so it never competes with the main scoreboard
+        self.drs_zones_used = 0       # how many times you kicked in a DRS boost
+        self.gravel_hits = 0          # how many times you drove into a gravel patch
+        self.frames_survived = 0      # how many frames you were actively racing (turns into seconds)
         self.night = False
         self.transition = 0.0
         # In auto mode, the current day/night stretch started at
@@ -1223,6 +1305,8 @@ class Game:
         was_boosting = self.boosting
         self.boosting = inp.is_active("boost") and self.drs_available
         self.just_boosted = self.boosting and not was_boosting   # true only on the frame it switches on
+        if self.just_boosted:
+            self.drs_zones_used += 1   # a fresh boost just kicked in -- counts as one DRS zone used
         if self.boosting:
             self.speed = min(MAX_BOOST_SPEED, self.speed * BOOST_MULTIPLIER)
 
@@ -1235,7 +1319,10 @@ class Game:
         for g in self.gravel_zones:
             g.update(self.speed)
         self.gravel_zones = [g for g in self.gravel_zones if not g.offscreen()]
+        was_in_gravel = self.in_gravel
         self.in_gravel = self.car.on_ground and any(g.covers(car_l, car_r) for g in self.gravel_zones)
+        if self.in_gravel and not was_in_gravel:
+            self.gravel_hits += 1   # just drove into a fresh patch -- counts as one hit
         if self.in_gravel:
             self.gravel_recovery = GRAVEL_RECOVERY_FRAMES
             self.speed *= GRAVEL_SLOWDOWN
@@ -1248,6 +1335,7 @@ class Game:
             self.gravel_recovery -= 1
 
         self.score += self.speed / 8.0
+        self.frames_survived += 1   # one more frame of actually racing (never counted while paused)
         self.ground_scroll = (self.ground_scroll + self.speed) % 40
         self.bg_scroll = (self.bg_scroll + self.speed * 0.25) % SKY_TILE_W
 
@@ -1494,6 +1582,19 @@ class Game:
             surf.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 14)))
             surf.blit(sub, sub.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 16)))
 
+            # a few quick numbers about how THIS race went, so the crash
+            # screen has more to look at than just the score. We only
+            # show this here, never during the race, so it doesn't
+            # crowd the scoreboard card up top. Drawn below where
+            # run_race() puts the HOME button (see home_btn there), so
+            # the two never overlap.
+            seconds = self.frames_survived / FPS
+            stats_txt = (f"DRS zones used: {self.drs_zones_used}   "
+                         f"Gravel hits: {self.gravel_hits}   "
+                         f"Time survived: {seconds:.1f}s")
+            stats = load_font(12).render(stats_txt, True, blend(pal["ink"], pal["bg"], 0.25))
+            surf.blit(stats, stats.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 78)))
+
         if self.paused and self.big_font:
             # dim everything, then show a big PAUSED message on top
             dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -1725,10 +1826,7 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
             play_whoosh()
         if game.just_crashed:
             play_thud()
-        if game.state == RUNNING and not game.paused:
-            engine.update(game.gear, game.boosting)
-        else:
-            engine.stop()
+        _drive_engine_sound(engine, game)
         inp.send_drs_ready(game.drs_available)   # lights up a real LED on the controller, if there is one
         game.render(game_surface)
         theme.draw(game_surface, game.palette(), small_font)

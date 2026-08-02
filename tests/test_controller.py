@@ -67,3 +67,55 @@ def test_send_drs_ready_only_writes_when_it_actually_changes():
     inp.send_drs_ready(True)   # still True -- should NOT send another message
     inp.send_drs_ready(True)
     assert inp.serial.written == [b"LED,1\n"]
+
+
+class _FakeGamepad:
+    """Stands in for a pygame.joystick.Joystick, without needing a real
+    Xbox/PlayStation/Switch controller plugged in."""
+
+    def __init__(self, pressed_buttons=(), hat=(0, 0)):
+        self._pressed = set(pressed_buttons)
+        self._hat = hat
+
+    def get_numbuttons(self):
+        return 16
+
+    def get_button(self, i):
+        return i in self._pressed
+
+    def get_numhats(self):
+        return 1
+
+    def get_hat(self, i):
+        return self._hat
+
+
+def test_gamepad_bottom_face_button_jumps():
+    inp = g.InputManager()
+    inp.gamepad = _FakeGamepad(pressed_buttons=[0])   # Xbox A / PS Cross / Switch B
+    inp._poll_gamepad()
+    assert inp.actions["jump"] is True
+
+
+def test_gamepad_dpad_down_also_ducks():
+    inp = g.InputManager()
+    inp.gamepad = _FakeGamepad(hat=(0, -1))   # D-pad pressed down
+    inp._poll_gamepad()
+    assert inp.actions["duck"] is True
+
+
+def test_gamepad_buttons_do_not_turn_off_keyboard_presses():
+    # the gamepad should only ever ADD to what the keyboard already
+    # said, never take a "True" back to "False"
+    inp = g.InputManager()
+    inp.actions["jump"] = True   # pretend the keyboard already said jump
+    inp.gamepad = _FakeGamepad(pressed_buttons=[])   # nothing held on the pad
+    inp._poll_gamepad()
+    assert inp.actions["jump"] is True
+
+
+def test_gamepad_start_button_triggers_home():
+    inp = g.InputManager()
+    inp.gamepad = _FakeGamepad(pressed_buttons=[7])
+    inp._poll_gamepad()
+    assert inp.actions["home"] is True

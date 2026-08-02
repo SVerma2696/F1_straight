@@ -65,3 +65,18 @@ def test_gear_never_goes_negative_while_slowed():
     gm.gravel_zones.append(g.GravelTrap(gm.car.x - 10, 200))
     gm.step({})
     assert gm.gear >= 1
+
+
+def test_gravel_hits_counts_each_fresh_patch():
+    gm = _fresh_game()
+    for _ in range(30):
+        gm.step({})
+    assert gm.gravel_hits == 0
+    gm.gravel_zones.append(g.GravelTrap(gm.car.x - 10, 40))   # a short patch
+    for _ in range(20):   # long enough to drive all the way through and out the other side
+        gm.step({})
+    assert gm.gravel_hits == 1
+    gm.gravel_zones.append(g.GravelTrap(gm.car.x - 10, 40))   # a second, separate patch
+    for _ in range(20):
+        gm.step({})
+    assert gm.gravel_hits == 2

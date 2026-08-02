@@ -50,3 +50,17 @@ def test_just_boosted_is_only_true_on_the_first_frame():
     assert gm.just_boosted is True
     gm.step({"boost": True})
     assert gm.just_boosted is False
+
+
+def test_drs_zones_used_counts_each_fresh_boost():
+    gm = _fresh_game()
+    for _ in range(10):
+        gm.step({})
+    gm.zones.append(g.DrsZone(gm.car.x - 10, 500))
+    gm.step({})
+    assert gm.drs_zones_used == 0
+    gm.step({"boost": True})   # boost turns on -- one use
+    gm.step({"boost": True})   # still held down -- NOT a second use
+    gm.step({})                # let go
+    gm.step({"boost": True})   # boost turns on again -- a second use
+    assert gm.drs_zones_used == 2

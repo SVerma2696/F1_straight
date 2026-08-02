@@ -101,12 +101,20 @@ INSTRUCTIONS = [
         "Click LEADERBOARD on the menu to see your best 5 races ever --\n"
         "each one remembers the score, the team, and the track."
     )),
-    ("Controller (optional)", (
-        "You can plug in a real 4-button controller instead of using the\n"
-        "keyboard. The CONTROLLER PORT menu automatically lists any\n"
-        "connected devices -- just pick yours from the list (hit the\n"
-        "small refresh button if you plug it in after opening the menu).\n"
-        "No controller found just means the keyboard will be used."
+    ("Gamepad (optional)", (
+        "Plug in an Xbox, PlayStation, or Nintendo Switch Pro controller\n"
+        "and it just works, right alongside the keyboard -- no menu, no\n"
+        "setup. Bottom face button = jump, left face button (or D-pad\n"
+        "down) = duck, right shoulder button = DRS boost, start/options\n"
+        "= home."
+    )),
+    ("Custom controller (optional)", (
+        "You can also plug in a real 4-button controller you built\n"
+        "yourself instead of using the keyboard/gamepad. The CONTROLLER\n"
+        "PORT menu automatically lists any connected devices -- just\n"
+        "pick yours from the list (hit the small refresh button if you\n"
+        "plug it in after opening the menu). No controller found just\n"
+        "means the keyboard/gamepad will be used."
     )),
 ]
 
@@ -117,7 +125,7 @@ class InstructionsWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("How to play")
-        self.geometry("460x920")
+        self.geometry("460x1080")
         # letting this resize (and its maximize button work) means a
         # bigger window just gives the instructions more breathing room
         # -- nothing breaks, since the text area above already grows to
