@@ -56,66 +56,43 @@ def _team_preview_image(color, scale=4):
     return Image.frombytes("RGBA", surf.get_size(), raw)
 
 
-# All the text shown on the "HOW TO PLAY" page, one heading + paragraph at a time
+# All the text shown on the "HOW TO PLAY" page, one heading + short
+# paragraph at a time -- kept short on purpose, since this window
+# scrolls but shouldn't need a long scroll to read the whole thing
 INSTRUCTIONS = [
     ("Controls", (
-        "SPACE / UP / W" + " " * 4 + "Bunny-hop (jump)\n"
-        "DOWN / S" + " " * 10 + "Aero tuck (duck)\n"
-        "SHIFT" + " " * 14 + "DRS boost -- only inside a green DRS zone\n"
-        "P" + " " * 19 + "Pause / un-pause\n"
-        "M" + " " * 19 + "Mute / unmute\n"
+        "SPACE / UP / W" + " " * 4 + "Jump\n"
+        "DOWN / S" + " " * 10 + "Duck\n"
+        "SHIFT" + " " * 14 + "DRS boost (in a green zone)\n"
+        "P" + " " * 19 + "Pause\n"
+        "M" + " " * 19 + "Mute\n"
         "SPACE" + " " * 14 + "Restart after a crash\n"
-        "H" + " " * 19 + "After a crash: back to this menu\n"
-        "ESC" + " " * 16 + "Quit the race"
+        "H" + " " * 19 + "Menu (after a crash)\n"
+        "ESC" + " " * 16 + "Quit"
     )),
-    ("DRS zones", (
-        "Scrolling green bands on the track. SHIFT only boosts your speed\n"
-        "while the car is inside one -- just like the real activation\n"
-        "zones on an F1 circuit. The BOOST/DRS status shows in the HUD."
+    ("Track hazards", (
+        "Green DRS zones boost your speed while you hold SHIFT inside\n"
+        "one. Sandy gravel patches slow you down for a bit -- jump over\n"
+        "one to dodge the penalty."
     )),
-    ("Gravel traps", (
-        "Sandy-brown patches on the track. Drive through one and you'll\n"
-        "slow down for a little while before easing back up to speed --\n"
-        "jump over a patch instead to dodge the penalty completely."
+    ("Tracks & day/night", (
+        "Pick Monza, Monaco, Silverstone, Suzuka, or RANDOM from the\n"
+        "TRACK menu. AUTO mode flips day and night at a random point;\n"
+        "LIGHT and DARK pin the time of day."
     )),
-    ("Tracks", (
-        "Pick a famous real track from the TRACK menu -- Monza, Monaco,\n"
-        "Silverstone, or Suzuka, each with its own background -- or leave\n"
-        "it on RANDOM and let the game surprise you."
-    )),
-    ("Day / night", (
-        "In AUTO mode the track flips between day and night at a random\n"
-        "point -- never the same gap twice -- so you can't predict it by\n"
-        "counting. The sun/moon drifts right-to-left over the course of a\n"
-        "phase as a soft visual cue that a change is coming. LIGHT and\n"
-        "DARK pin the time of day and stop the drift. The MODE dropdown\n"
-        "is also live in the top-left corner during the race."
-    )),
-    ("Goal", (
-        "Survive as long as possible -- hop the ground hazards, duck the\n"
-        "swooping seagulls, and beat your high score. Your high score,\n"
-        "your best 5 races, and your last team/track/mode are all saved\n"
-        "to disk and remembered even after you close the game."
+    ("Goal & saving", (
+        "Survive and beat your high score. Your high score, best 5\n"
+        "races, and last team/track/mode are all saved automatically."
     )),
     ("Leaderboard", (
-        "Click LEADERBOARD on the menu to see your best 5 races ever --\n"
-        "each one remembers the score, the team, and the track."
+        "Click LEADERBOARD on the menu to see your best 5 races, with\n"
+        "filters by team and track."
     )),
-    ("Gamepad (optional)", (
-        "Plug in an Xbox, PlayStation, or Nintendo Switch Pro controller\n"
-        "and it just works, right alongside the keyboard -- no menu, no\n"
-        "setup. Bottom face button = jump, left face button (or D-pad\n"
-        "down) = duck, right shoulder button = DRS boost, start/options\n"
-        "= home."
-    )),
-    ("Custom controller (optional)", (
-        "You can also plug in a real 4-button controller you built\n"
-        "yourself, on top of the keyboard/gamepad (never instead of --\n"
-        "they all work together). The CONTROLLER PORT menu automatically\n"
-        "lists any connected devices -- just pick yours from the list\n"
-        "(hit the small refresh button if you plug it in after opening\n"
-        "the menu). No controller found just means the keyboard/gamepad\n"
-        "will be used on their own."
+    ("Controllers (optional)", (
+        "Xbox, PlayStation, and Switch gamepads just work, right\n"
+        "alongside the keyboard. A hand-built 4-button controller works\n"
+        "too -- pick its port from the CONTROLLER PORT menu. Everything\n"
+        "works together at once; nothing ever replaces the keyboard."
     )),
 ]
 
@@ -126,20 +103,26 @@ class InstructionsWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("How to play")
-        self.geometry("460x1080")
+        self.geometry("460x620")
         # letting this resize (and its maximize button work) means a
         # bigger window just gives the instructions more breathing room
-        # -- nothing breaks, since the text area above already grows to
-        # fill whatever space it's given (see "body" below)
+        # -- nothing breaks, since "body" below is a SCROLLABLE frame,
+        # so even a small window can still reach every section, just by
+        # scrolling instead of needing to be tall enough to show it all
+        # at once
         self.resizable(True, True)
-        self.minsize(360, 400)
+        self.minsize(360, 320)
         self.transient(master)   # keeps this window in front of the main menu
         self.grab_set()          # you have to close this before clicking the menu again
 
         ctk.CTkLabel(self, text="HOW TO PLAY",
                      font=("Segoe UI", 20, "bold")).pack(pady=(20, 12))
 
-        body = ctk.CTkFrame(self, fg_color="transparent")
+        # a scrollable frame instead of a plain one -- it grows a
+        # scrollbar on its own the moment its content is taller than
+        # the window, so the window never HAS to be big enough to show
+        # every section at once
+        body = ctk.CTkScrollableFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=24)
         for heading, text in INSTRUCTIONS:
             ctk.CTkLabel(body, text=heading, font=("Segoe UI", 13, "bold"),
