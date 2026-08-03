@@ -1,5 +1,7 @@
 """Tests for InputManager -- reading the keyboard, and reading a real
 controller's messages over a fake, pretend serial connection."""
+from unittest.mock import patch
+
 import game as g
 
 
@@ -67,6 +69,52 @@ def test_send_drs_ready_only_writes_when_it_actually_changes():
     inp.send_drs_ready(True)   # still True -- should NOT send another message
     inp.send_drs_ready(True)
     assert inp.serial.written == [b"LED,1\n"]
+
+
+def test_update_still_polls_the_keyboard_even_with_a_serial_controller_connected():
+    # this is the exact bug a real player hit: the launcher auto-picks
+    # the first serial port it finds, which might not be our controller
+    # at all -- if a "connected" port like that ever silently switched
+    # the keyboard off, every key on the keyboard would stop working
+    inp = g.InputManager()
+    inp.serial = _FakeSerial()
+    calls = []
+    inp._poll_keyboard = lambda: calls.append("keyboard was checked")
+    inp.update()
+    assert calls == ["keyboard was checked"]
+
+
+def test_serial_adds_to_the_keyboard_instead_of_replacing_it():
+    inp = g.InputManager()
+    inp.actions["jump"] = True   # pretend the keyboard already said jump
+    inp.serial = _FakeSerial(b"0,1,0,0\n")   # the "controller" says duck, not jump
+    inp._poll_serial()
+    assert inp.actions["jump"] is True    # the keyboard's jump was NOT wiped out
+    assert inp.actions["duck"] is True    # and the controller's duck got added
+
+
+def test_serial_garbage_does_not_wipe_out_keyboard_presses():
+    inp = g.InputManager()
+    inp.actions["jump"] = True
+    # 4 comma-separated fields (so it LOOKS like a real button line),
+    # but not actually "1" or "0" -- exactly the kind of thing an
+    # unrelated real device might accidentally send
+    inp.serial = _FakeSerial(b"not,real,controller,data\n")
+    inp._poll_serial()
+    assert inp.actions["jump"] is True
+
+
+def test_opening_the_controller_port_never_blocks_forever_on_writes():
+    # this is the exact regression a real player hit: some OTHER real
+    # serial device on their computer (not our controller) got
+    # auto-selected, and sending it the DRS-ready LED message hung the
+    # whole game, because only the READ side was ever told not to wait
+    # around. Both sides need a timeout.
+    with patch("serial.Serial") as fake_serial_cls:
+        g.InputManager(serial_port="COM3")
+        _args, kwargs = fake_serial_cls.call_args
+        assert kwargs.get("timeout") == 0
+        assert kwargs.get("write_timeout") == 0
 
 
 class _FakeGamepad:

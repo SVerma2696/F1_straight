@@ -740,18 +740,19 @@ class InputManager:
     looks at any of those directly, and it doesn't care which one the
     answer came from.
 
-    Phase 1: check the keyboard (this always runs, no setup needed).
-    Phase 1.5: also check a plugged-in gamepad -- an Xbox, PlayStation,
-    or Nintendo Switch Pro controller all work the same way here,
-    thanks to pygame lining their buttons up the same regardless of
-    brand. Its buttons work ALONGSIDE the keyboard the whole time, so
-    you can freely mix the two.
-    Phase 2: check a real 4-button controller you built yourself,
-    instead, sent over a USB cable. Pass serial_port="COM5" (or whatever
-    port your controller shows up as) to use it -- this replaces the
-    keyboard and gamepad entirely, since it's a dedicated setup. If we
-    can't open that port for any reason, we just fall back to the
-    keyboard, so the game always still works.
+    All three work TOGETHER, all the time -- the keyboard is always
+    checked, and a gamepad and/or a hand-built serial controller
+    (pass serial_port="COM5", or whatever port it shows up as) only
+    ever ADD button presses on top of it, never take the keyboard away.
+    This matters more than it might sound like: the launcher auto-picks
+    the first serial port it finds, which might not actually be a game
+    controller at all -- some other unrelated device on the computer
+    could open that port just fine without ever sending real button
+    data. If a controller "connecting" like that ever turned the
+    keyboard OFF, every key on the keyboard would silently stop
+    working -- so instead, nothing ever gets turned off, only added to.
+    If a serial port can't be opened at all, we just fall back to the
+    keyboard (and gamepad, if any), so the game always still works.
     """
 
     ACTIONS = ("jump", "duck", "left", "right", "boost", "home")
@@ -779,30 +780,42 @@ class InputManager:
         if serial_port:
             try:
                 import serial   # only needed if you're actually using a controller
-                # timeout=0 means "don't wait around" -- we never want to
-                # freeze the game just because the controller went quiet
-                self.serial = serial.Serial(serial_port, baud, timeout=0)
+                # timeout=0 means "don't wait around" when READING, and
+                # write_timeout=0 means the same thing when WRITING (for
+                # the DRS-ready LED message) -- without this second one,
+                # sending a message to a device that never says "ok, got
+                # it" (like some unrelated real serial port on the
+                # computer that isn't actually our controller) could
+                # freeze the whole game forever waiting for a reply
+                self.serial = serial.Serial(serial_port, baud, timeout=0, write_timeout=0)
             except Exception as e:
                 print(f"[input] {serial_port} unavailable ({e}); using keyboard")
 
-        if self.serial is None:
-            # a hand-built serial controller is a dedicated setup, so we
-            # only bother looking for a plugged-in gamepad when one
-            # ISN'T being used
-            try:
-                pygame.joystick.init()
-                if pygame.joystick.get_count() > 0:
-                    self.gamepad = pygame.joystick.Joystick(0)
-            except pygame.error:
-                self.gamepad = None   # no gamepad support on this computer -- keyboard still works fine
+        # also check for a plugged-in gamepad, regardless of whether a
+        # serial controller is being used too -- everything works
+        # together, so there's no reason to skip this
+        try:
+            pygame.joystick.init()
+            if pygame.joystick.get_count() > 0:
+                self.gamepad = pygame.joystick.Joystick(0)
+        except pygame.error:
+            self.gamepad = None   # no gamepad support on this computer -- keyboard still works fine
 
     def update(self):
-        if self.serial is not None:
-            self._poll_serial()
-            return
+        # the keyboard always gets checked, no matter what -- a real
+        # controller (gamepad or hand-built serial one) only ever ADDS
+        # button presses on top of it, never replaces it. This matters
+        # because the launcher auto-picks the first serial port it
+        # finds, which might not actually be our controller at all (it
+        # could be some other unrelated device on the computer) -- if
+        # that happened to silently take over and the keyboard got
+        # ignored, every key on the keyboard would stop working, which
+        # is exactly the bug this guards against.
         self._poll_keyboard()
         if self.gamepad is not None:
             self._poll_gamepad()
+        if self.serial is not None:
+            self._poll_serial()
 
     def _poll_keyboard(self):
         keys = pygame.key.get_pressed()
@@ -861,10 +874,14 @@ class InputManager:
             return
 
         jump, duck, drs, home = (b == b"1" for b in bits)
-        self.actions["jump"] = jump
-        self.actions["duck"] = duck
-        self.actions["boost"] = drs
-        self.actions["home"] = home
+        # OR it in on top of the keyboard, same as the gamepad does --
+        # never turn an already-True button back to False, so a real
+        # controller can only ever ADD button presses, not take away
+        # ones the keyboard already made
+        self.actions["jump"] = self.actions["jump"] or jump
+        self.actions["duck"] = self.actions["duck"] or duck
+        self.actions["boost"] = self.actions["boost"] or drs
+        self.actions["home"] = self.actions["home"] or home
 
     def is_active(self, action):
         return self.actions.get(action, False)

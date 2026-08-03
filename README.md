@@ -256,9 +256,13 @@ ESP32 serial CSV frame     -> InputManager._poll_serial    -> is_active("jump", 
 ```
 **Note:** the serial reader always acts on only the newest complete
 line and discards any that piled up behind it, so a busy frame can
-never build up input lag. The keyboard and a gamepad are always
-checked together (either one can trigger an action); a custom serial
-controller, being a dedicated setup, replaces both instead.
+never build up input lag. All three input sources are always checked
+together and merged (any one of them can trigger an action) --
+**nothing ever turns the keyboard off**, even when a serial controller
+is connected. That matters because the launcher auto-picks the first
+serial port it finds, which might not actually be a game controller;
+if connecting to some unrelated device ever silenced the keyboard, the
+whole game would look "broken" with no error message at all.
 
 ### Output (game -> controller)
 ```
@@ -270,6 +274,12 @@ buttons are pressed, and the game tells the controller whether DRS is
 ready right now, so an optional LED can echo the on-screen badge.
 `send_drs_ready` only actually writes a message when the ready/not-ready
 state just changed, so it doesn't spam the USB cable every frame.
+**Both directions are non-blocking** (`timeout=0` for reads,
+`write_timeout=0` for writes) -- without the write side of that, picking
+an unrelated real serial port (a modem, a Bluetooth COM port, anything
+that isn't actually our controller) could freeze the whole game
+waiting forever for that device to acknowledge a write it was never
+going to answer.
 
 ### Menu ⇄ Race
 ```

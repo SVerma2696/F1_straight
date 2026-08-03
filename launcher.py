@@ -110,11 +110,12 @@ INSTRUCTIONS = [
     )),
     ("Custom controller (optional)", (
         "You can also plug in a real 4-button controller you built\n"
-        "yourself instead of using the keyboard/gamepad. The CONTROLLER\n"
-        "PORT menu automatically lists any connected devices -- just\n"
-        "pick yours from the list (hit the small refresh button if you\n"
-        "plug it in after opening the menu). No controller found just\n"
-        "means the keyboard/gamepad will be used."
+        "yourself, on top of the keyboard/gamepad (never instead of --\n"
+        "they all work together). The CONTROLLER PORT menu automatically\n"
+        "lists any connected devices -- just pick yours from the list\n"
+        "(hit the small refresh button if you plug it in after opening\n"
+        "the menu). No controller found just means the keyboard/gamepad\n"
+        "will be used on their own."
     )),
 ]
 
@@ -384,15 +385,22 @@ class Launcher(ctk.CTk):
                       font=("Segoe UI", 16, "bold"),
                       command=self._start).pack(pady=(20, 10))
 
+        # a solid, readable background instead of "transparent" -- a see-
+        # through button blended into plain white in light mode, making
+        # its border and text nearly invisible. (gray85, gray20) means
+        # "light gray in light mode, dark gray in dark mode," so it
+        # stays easy to read either way.
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(pady=(0, 16))
         ctk.CTkButton(btn_row, text="?  HOW TO PLAY", width=170, height=32,
-                      corner_radius=8, fg_color="transparent", border_width=1,
-                      font=("Segoe UI", 12),
+                      corner_radius=8, fg_color=("gray85", "gray20"),
+                      text_color=("gray10", "gray90"), border_width=1,
+                      border_color=("gray70", "gray40"), font=("Segoe UI", 12),
                       command=self._open_instructions).pack(side="left", padx=4)
         ctk.CTkButton(btn_row, text="\U0001F3C6  LEADERBOARD", width=170, height=32,
-                      corner_radius=8, fg_color="transparent", border_width=1,
-                      font=("Segoe UI", 12),
+                      corner_radius=8, fg_color=("gray85", "gray20"),
+                      text_color=("gray10", "gray90"), border_width=1,
+                      border_color=("gray70", "gray40"), font=("Segoe UI", 12),
                       command=self._open_leaderboard).pack(side="left", padx=4)
 
     # ------------------------------------------------------------ what happens when you click things
