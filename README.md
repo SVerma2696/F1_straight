@@ -142,9 +142,38 @@ pip install -r requirements.txt
 ```
 
 ### 3. (Optional) Set up a real controller
-Flash `firmware/endless_straight_controller.ino` onto an ESP32 with the
-Arduino IDE and wire up 4 buttons. Skip this entirely to just use the
-keyboard -- and you don't need to know its port name either: the
+Skip this entirely to just use the keyboard (or a plugged-in Xbox,
+PlayStation, or Switch gamepad, which needs no setup at all).
+
+**Wiring** (4 push buttons + 1 optional LED, on a breadboard with an
+ESP32 dev board, like the one in an ELEGOO Super Starter Kit):
+* Each button: one leg to GND (the breadboard's ground rail), the
+  other leg to GPIO 32 (jump), 33 (duck), 25 (DRS), or 26 (home). No
+  resistor needed -- the firmware turns on the pin's internal pull-up.
+* Optional DRS-ready LED: GPIO 27 -> a 220Ω resistor -> the LED's long
+  leg (anode). The LED's short leg (cathode) -> GND. The resistor here
+  IS required, or the LED burns out.
+* Don't forget one last wire from the ground rail back to a GND pin on
+  the ESP32 itself -- without it, nothing reads correctly.
+
+**Flashing the firmware:**
+1. Install the Arduino IDE, then add the ESP32 board package: File ->
+   Preferences -> Additional Boards Manager URLs ->
+   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`,
+   then Tools -> Board -> Boards Manager -> search "esp32" -> install.
+2. Plug the board in over USB, pick Tools -> Board -> esp32 -> "ESP32
+   Dev Module", and Tools -> Port -> the port that shows up (install
+   the CP210x USB driver if none appears).
+3. Open `firmware/endless_straight_controller.ino` and click Upload.
+   If it hangs at "Connecting...", hold the board's BOOT button until
+   uploading actually starts -- a common ESP32 quirk, not a problem.
+4. Test it: Tools -> Serial Monitor, set the speed to 115200. You
+   should see a `0,0,0,0`-style line -- press each button and watch
+   its number flip to 1. To test the LED on its own, set the line
+   ending to "Newline", type `LED,1` and send it -- the LED should
+   light up.
+
+You don't need to know the port's name to actually play -- the
 launcher lists connected devices for you automatically.
 
 ### 4. Run it

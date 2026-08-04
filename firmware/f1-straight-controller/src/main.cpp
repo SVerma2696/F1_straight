@@ -60,8 +60,28 @@
 
   How to put this onto the board
   -----------------------------------
-  Open this file in the Arduino IDE, pick your ESP32 board and the USB
-  port from the Tools menu, then click Upload.
+  1. First time only: in the Arduino IDE, go to File -> Preferences and
+     add this to "Additional Boards Manager URLs":
+       https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+     Then open Tools -> Board -> Boards Manager, search "esp32", and
+     install the one made by Espressif Systems.
+  2. Plug the board in over USB, then pick Tools -> Board -> esp32 ->
+     "ESP32 Dev Module", and Tools -> Port -> whichever port just
+     showed up (if no port shows up, your computer may need the
+     CP210x USB driver -- search "CP210x driver" for your OS).
+  3. Click the Upload button (the arrow icon). If it gets stuck at
+     "Connecting..." for more than a few seconds, press and hold the
+     "BOOT" button on the board right as it starts connecting, then
+     let go once you see it actually uploading -- this is a common
+     hiccup on ESP32 boards, not a sign anything is wrong.
+  4. Once it says "Done uploading," open Tools -> Serial Monitor and
+     set the speed in the bottom-right corner to 115200. You should
+     see a "0,0,0,0"-style line scrolling by -- press each button and
+     watch its number flip to 1.
+  5. To test the LED without even running the game: in the Serial
+     Monitor's top text box, set the line-ending dropdown to
+     "Newline", then type LED,1 and hit send -- the LED should light
+     up. Type LED,0 to turn it back off.
 */
 
 // Which GPIO pin each button is wired to
