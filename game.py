@@ -411,8 +411,11 @@ def init_audio():
 
 def _make_wave(freq, duration, volume=0.4, wave="sine", fade_out=True):
     """Build one little sound out of nothing but math -- no sound file
-    needed. `wave` picks the SHAPE of the sound: "sine" is smooth and
-    soft, "saw" is buzzy and engine-like, "square" is a hollow retro beep."""
+    needed. This is used for the SHORT sounds (like the click and the
+    thud), not the engine hum -- the engine has its own special maker,
+    _make_engine_wave(), because it needs to sound smoother.
+    `wave` picks the SHAPE of the sound: "sine" is smooth and soft,
+    "saw" is buzzy, "square" is a hollow retro beep."""
     n = int(SOUND_RATE * duration)
     samples = bytearray()
     for i in range(n):
@@ -425,6 +428,49 @@ def _make_wave(freq, duration, volume=0.4, wave="sine", fade_out=True):
             s = math.sin(2 * math.pi * freq * t)
         if fade_out:
             s *= max(0.0, 1.0 - t / duration)   # fade out smoothly, so it doesn't click at the end
+        value = int(max(-1.0, min(1.0, s * volume)) * 32767)
+        samples += value.to_bytes(2, byteorder="little", signed=True) * 2   # same value, left and right
+    return bytes(samples)
+
+
+def _make_engine_wave(freq, duration, volume=0.16, n_harmonics=6):
+    """Make the car engine's humming sound -- the NICE way, so it
+    doesn't hurt your ears.
+
+    Long ago, this game made the engine sound with one buzzy zig-zag
+    wave, kind of like a loud bee. That was too scratchy to listen to
+    for a long time. So instead, we make the sound out of lots of tiny
+    smooth waves stacked on top of each other, like layers of a cake --
+    a big smooth wave on the bottom, and smaller, quieter waves on top
+    of it. We also add:
+      - a very low, quiet "rumble" wave, like the deep sound a big
+        truck makes, so the engine feels strong;
+      - a tiny whisper of soft static, like the sound of wind, so the
+        engine sounds a little bit like a real machine and not just a
+        music note;
+      - a gentle "rounding off" at the very end (called soft clipping)
+        so any loud peaks get smoothed down instead of chopped flat,
+        the same way a pillow is comfier than a hard board.
+    """
+    n = int(SOUND_RATE * duration)
+    samples = bytearray()
+    noise_smoother = 0.0     # remembers the last whisper-of-wind value, so the whisper stays smooth
+    rnd = random.Random(int(freq))   # always makes the SAME whisper for the SAME note, every time
+    for i in range(n):
+        t = i / SOUND_RATE
+        s = 0.0
+        # stack up several smooth waves -- the higher ones are quieter,
+        # like echoes getting smaller and smaller
+        for h in range(1, n_harmonics + 1):
+            amp = (1.0 / h) * (0.6 ** (h - 1)) ** 0.3
+            s += amp * math.sin(2 * math.pi * freq * h * t)
+        s /= 2.2   # keep the stacked waves from getting too loud together
+        s += 0.35 * math.sin(2 * math.pi * (freq / 2) * t)   # the deep rumble layer
+        # the tiny whisper-of-wind texture, smoothed so it's soft, not scratchy
+        raw_whisper = rnd.uniform(-1, 1)
+        noise_smoother += (raw_whisper - noise_smoother) * 0.15
+        s += 0.06 * noise_smoother
+        s = math.tanh(s * 1.3) / math.tanh(1.3)   # round off any loud peaks gently
         value = int(max(-1.0, min(1.0, s * volume)) * 32767)
         samples += value.to_bytes(2, byteorder="little", signed=True) * 2   # same value, left and right
     return bytes(samples)
@@ -500,9 +546,11 @@ def _drive_engine_sound(engine, game):
 
 
 class EngineSound:
-    """Plays a looping engine hum whose pitch matches your current gear,
-    on its own dedicated sound channel so it never gets cut off by the
-    other one-shot sounds (whoosh, thud, click)."""
+    """This makes the car's humming engine sound. The hum gets higher
+    the faster you go (higher gear = higher hum), just like a real car.
+    It plays on its own special sound channel, so it never gets
+    interrupted by the other quick sounds like the whoosh, the thud, or
+    the click."""
 
     def __init__(self):
         self.channel = None
@@ -522,7 +570,7 @@ class EngineSound:
             cycles = max(1, round(freq * 0.3))
             duration = cycles / freq
             snd = _get_sound(f"engine_{gear}", lambda f=freq, d=duration:
-                              _make_wave(f, d, volume=0.16, wave="saw", fade_out=False))
+                              _make_engine_wave(f, d, volume=0.16))
             if snd:
                 self.channel.play(snd, loops=-1)
         # a little quieter while boosting, so the whoosh cuts through

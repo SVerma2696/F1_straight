@@ -87,7 +87,11 @@ f1_straight/
 * **Procedurally-generated sound** — an engine hum that gets
   higher-pitched as you shift up through the gears, a whoosh when DRS
   kicks in, and a thud on crashing, all built out of math with
-  `pygame.mixer` — no sound files, same idea as the car sprite.
+  `pygame.mixer` — no sound files, same idea as the car sprite. The
+  engine hum is synthesized from blended, decaying harmonics plus a
+  soft sub-bass layer and gentle soft-clipping (as of v1.3.1), rather
+  than a single raw buzzy wave, so it sounds like an engine instead of
+  a buzzer.
 * **Pause anytime** — press `P` mid-race (or hold JUMP + HOME together
   on a controller) to freeze the race, dim the screen, and show PAUSED.
 * **Mute or turn the volume down** — press `M` any time to mute, or set
@@ -379,6 +383,16 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
 * Arduino IDE -- optional, only needed to flash the firmware
 * `pyinstaller` (via `requirements-dev.txt`) -- only needed to build the app yourself
 * `pytest` (via `requirements-dev.txt`) -- only needed to run the automated tests
+
+---
+
+## 📝 Changelog
+### v1.3.1
+* Replaced the engine hum's raw sawtooth wave with a smoother,
+  band-limited synthesis — blended harmonics that fade out, a quiet
+  sub-bass layer for weight, a touch of soft-filtered noise for
+  texture, and gentle soft-clipping instead of hard clipping. Same
+  idea, far easier on the ears, especially in the higher gears.
 
 ---
 
