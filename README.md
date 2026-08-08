@@ -44,7 +44,9 @@ f1_straight/
 │       ├── OFL.txt                          # License for the Orbitron font
 │       └── Orbitron-Variable.ttf             # The scoreboard's font
 ├── firmware/
-│   └── endless_straight_controller.ino       # Optional 4-button ESP32 controller sketch
+│   ├── endless_straight_controller.ino       # Optional 4-button ESP32 controller sketch (Arduino IDE)
+│   └── f1-straight-controller/               # The same firmware, as a PlatformIO project (VS Code)
+│       └── src/main.cpp                      # Same code as the .ino, plus #include <Arduino.h>
 ├── tests/
 │   ├── conftest.py                           # Shared pytest setup (headless pygame, import path)
 │   ├── test_controller.py                    # InputManager: keyboard + fake-serial parsing
@@ -176,6 +178,18 @@ ESP32 dev board, like the one in an ELEGOO Super Starter Kit):
    its number flip to 1. To test the LED on its own, set the line
    ending to "Newline", type `LED,1` and send it -- the LED should
    light up.
+
+**Prefer VS Code over the Arduino IDE?** `firmware/f1-straight-controller/`
+is the exact same firmware as a [PlatformIO](https://platformio.org/)
+project instead -- install the PlatformIO IDE extension, open that
+folder, and PlatformIO's own Upload/Serial Monitor buttons do the same
+job as steps 2-4 above, no separate ESP32 board package install
+needed (PlatformIO fetches that itself from `platformio.ini`). One
+thing to know if you ever edit the firmware: PlatformIO compiles
+`src/main.cpp` as plain C++, not as an Arduino sketch, so it needs an
+explicit `#include <Arduino.h>` at the top of the file -- the Arduino
+IDE adds that for you automatically for a `.ino` file, which is why
+the two files look slightly different at the very top.
 
 You don't need to know the port's name to actually play -- the
 launcher lists connected devices for you automatically.

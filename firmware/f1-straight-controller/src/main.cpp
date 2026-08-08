@@ -1,3 +1,10 @@
+// PlatformIO compiles this file as plain C++, not as an Arduino sketch,
+// so it doesn't automatically hand us things like Serial, pinMode, or
+// millis() the way the Arduino IDE does for a .ino file -- this one
+// line is what brings all of that in. It has to be the very first
+// thing in the file.
+#include <Arduino.h>
+
 /*
   Endless Straight -- a 4-button race car controller
   =====================================================
