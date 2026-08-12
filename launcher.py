@@ -12,8 +12,12 @@ good at menus, game.py is good at fast-moving pictures.
 
 Run it:  python launcher.py
 """
+import os
+import sys
+import tempfile
+
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk
 import pygame
 
 try:
@@ -245,8 +249,12 @@ class Launcher(ctk.CTk):
     """The main menu window: pick a team, pick a theme, then race."""
 
     def __init__(self):
+        # must happen before super().__init__() below actually creates the
+        # window -- see set_windows_app_id()'s own comment for why
+        g.set_windows_app_id()
         super().__init__()
         self.title("The F1 Straight")
+        self._set_window_icon()
         self.geometry("640x830")
         # lets you maximize (or just drag bigger) the menu window too --
         # the layout stays anchored at the top instead of stretching,
@@ -276,6 +284,38 @@ class Launcher(ctk.CTk):
 
         self._build_ui()
         self._select(last_team_i)
+
+    def _set_window_icon(self):
+        """Put our icon in the menu window's title bar and taskbar/dock.
+        If the picture is ever missing, we just skip it instead of
+        crashing -- a missing icon isn't worth stopping the whole app over."""
+        try:
+            icon_img = ImageTk.PhotoImage(Image.open(g.ICON_PATH))
+            self.iconphoto(True, icon_img)
+            # tkinter only keeps a WEAK reference to this picture, so without
+            # holding our own reference here, Python would throw it away the
+            # moment this method ends -- and the icon would vanish with it.
+            self._icon_img = icon_img
+
+            if sys.platform.startswith("win"):
+                # CustomTkinter itself sets its OWN taskbar icon a fifth of a
+                # second after every window is created (see its ctk_tk.py) --
+                # UNLESS iconbitmap() was already called on the window by
+                # then. iconphoto() alone doesn't count, so without this our
+                # icon was getting silently swapped back out for
+                # CustomTkinter's own logo moments after the window opened,
+                # which is why it looked like nothing had changed at all.
+                # iconbitmap() needs a real Windows .ico file (a .png won't
+                # do), so we convert our one source picture into a temporary
+                # one here, using the same Pillow library the game already
+                # depends on.
+                self._icon_tmp_dir = tempfile.TemporaryDirectory()
+                ico_path = os.path.join(self._icon_tmp_dir.name, "icon.ico")
+                Image.open(g.ICON_PATH).save(
+                    ico_path, sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+                self.iconbitmap(default=ico_path)
+        except (FileNotFoundError, OSError):
+            pass
 
     # ------------------------------------------------------------ building the screen
     def _build_ui(self):

@@ -28,7 +28,10 @@ new version, so all three downloads are always kept up to date.
 import platform
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 
@@ -51,7 +54,11 @@ APP_NAME = APP_NAMES.get(SYSTEM, "F1Straight")
 # right one automatically instead of making anyone remember it.
 DATA_SEP = ";" if SYSTEM == "Windows" else ":"
 font_folder = HERE / "assets" / "fonts"
-add_data = f"{font_folder}{DATA_SEP}assets/fonts"
+icon_png = HERE / "assets" / "logo.png"
+add_data = [
+    f"{font_folder}{DATA_SEP}assets/fonts",
+    f"{icon_png}{DATA_SEP}assets",   # so the game window can still find it once packaged
+]
 
 cmd = [
     sys.executable, "-m", "PyInstaller",
@@ -60,12 +67,36 @@ cmd = [
     "--noconfirm",         # don't stop and ask before overwriting an old build
     "--name", APP_NAME,
     "--collect-all", "customtkinter",   # CustomTkinter needs its own theme files bundled too
-    "--add-data", add_data,
-    str(HERE / "launcher.py"),
 ]
+for entry in add_data:
+    cmd += ["--add-data", entry]
+
+# PyInstaller's --icon needs a format the OPERATING SYSTEM recognizes as
+# an icon (.ico on Windows, .icns on Mac) -- a plain .png doesn't work
+# there, even though it's the file we actually keep in the repo. So we
+# convert our one source picture into whichever format today's computer
+# needs, just for this build, using the same Pillow library the game
+# already depends on. This is what puts our icon on the .exe file
+# itself/in the dock -- separate from set_window_icon() in game.py and
+# _set_window_icon() in launcher.py, which put it on the window while
+# the app is actually running.
+icon_tmp_dir = None
+if icon_png.exists() and SYSTEM in ("Windows", "Darwin"):
+    icon_tmp_dir = tempfile.TemporaryDirectory()
+    if SYSTEM == "Windows":
+        native_icon = Path(icon_tmp_dir.name) / "icon.ico"
+        Image.open(icon_png).save(native_icon, sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+    else:
+        native_icon = Path(icon_tmp_dir.name) / "icon.icns"
+        Image.open(icon_png).save(native_icon)
+    cmd += ["--icon", str(native_icon)]
+
+cmd += [str(HERE / "launcher.py")]
 
 print("Building with:", " ".join(cmd))
 result = subprocess.run(cmd, cwd=HERE)
+if icon_tmp_dir is not None:
+    icon_tmp_dir.cleanup()
 if result.returncode != 0:
     print("\nSomething went wrong -- scroll up to see what PyInstaller said.")
     sys.exit(result.returncode)

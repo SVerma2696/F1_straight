@@ -17,17 +17,34 @@ double-click download for each with **PyInstaller**.
 ## 📥 Download the App (no Python needed)
 Grab a ready-to-run download from the
 [Releases page](https://github.com/SVerma2696/f1_straight/releases) --
-pick the one for your computer:
+pick the one for your computer.
+
+**Every single one of these three downloads will get flagged as
+"unsafe" the first time -- on purpose, and that's normal.** Nobody paid
+for the paperwork (a code-signing certificate) that tells your browser
+and OS "trust me, I made this" -- so both will warn you about an
+unrecognized/unverified app before letting you run it, no matter which
+computer you're on. Here's exactly what to click through:
+
+1. **While downloading**, Chrome/Edge/Firefox may show a banner like
+   *"This file isn't commonly downloaded and could be dangerous"* --
+   click **Keep** (Chrome/Edge) or **Keep this file** (Firefox) to
+   actually save it. This warning is about the file being NEW, not
+   about anything being wrong with it -- it shows up for any file
+   almost nobody has downloaded yet.
+2. **After downloading**, follow the steps for your computer below.
 
 | Your computer | Download | First-time setup |
 |---|---|---|
-| Windows | `F1Straight-windows.exe` | Just double-click it. Windows SmartScreen may warn about an unrecognized app the first time -- click "More info" then "Run anyway." |
-| macOS | `F1Straight-macos` | Right-click (or Control-click) it and choose **Open** the first time, since it isn't signed by an Apple developer account -- macOS Gatekeeper blocks a plain double-click on unsigned apps. |
-| Linux | `F1Straight-linux` | Make it runnable first: `chmod +x F1Straight-linux`, then run it with `./F1Straight-linux`. |
+| Windows | `F1Straight-windows.exe` | Double-click it. A blue **"Windows protected your PC"** screen from Microsoft SmartScreen will appear -- click **More info**, then **Run anyway**. You'll only see this once per version; SmartScreen remembers your choice after that. |
+| macOS | `F1Straight-macos` | Right-click (or Control-click) it and choose **Open** -- a popup still warns it's from an "unidentified developer," but this way it gives you an **Open** button (a plain double-click won't, since the app isn't signed by a paid Apple Developer account). If that popup has no Open button, instead go to  **System Settings → Privacy & Security**, scroll down to the security message about F1Straight, click **Open Anyway**, then confirm on the next prompt. |
+| Linux | `F1Straight-linux` | Linux doesn't show a "this could be dangerous" screen the way Windows/Mac do, but it also refuses to run a downloaded file until you mark it as a program yourself: `chmod +x F1Straight-linux`, then `./F1Straight-linux`. Prefer clicking over the terminal? Right-click the file in your file manager → **Properties** → **Permissions** tab → check **"Allow executing file as program"** (wording varies slightly by desktop) instead. |
 
 Every release is built fresh for all three from the same source code by
 [.github/workflows/release.yml](.github/workflows/release.yml), so
-they're always in sync with each other.
+they're always in sync with each other -- and none of them are
+digitally signed, which is exactly why every OS double-checks with you
+the first time you run each new version.
 
 ---
 
@@ -40,6 +57,7 @@ f1_straight/
 │       ├── codeql.yml                        # Automated code-scanning for security issues
 │       └── release.yml                       # Builds + publishes the 3 downloads above
 ├── assets/
+│   ├── logo.png                              # App icon, shown in title bars and on the packaged downloads
 │   └── fonts/
 │       ├── OFL.txt                          # License for the Orbitron font
 │       └── Orbitron-Variable.ttf             # The scoreboard's font
@@ -401,6 +419,11 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
 ---
 
 ## 📝 Changelog
+### v1.3.3
+* Added a real app icon (the "F1 Timer" logo, see Credits below) --
+  it now shows up in the race window's title bar, the menu window's
+  title bar, and on the packaged Windows/macOS downloads themselves.
+
 ### v1.3.1
 * Replaced the engine hum's raw sawtooth wave with a smoother,
   band-limited synthesis — blended harmonics that fade out, a quiet
@@ -417,7 +440,16 @@ track names referenced in-game are used only as labels for the
 procedurally-generated colors/shapes, and are the trademarks of their
 respective owners.
 
+* **App icon:** the "F1 Timer" logo (the five red start lights) --
+  saved as-is at [`assets/logo.png`](assets/logo.png) so the game and
+  its packaged downloads always have it:
+
+  ![App icon](assets/logo.png)
+
+  * Source (F1 Start Timer Blog): https://f1starttimer.blog/
+  * Asset URL: https://f1starttimer.blog/static/logo.png
 * **Font:** [Orbitron](https://github.com/google/fonts/tree/main/ofl/orbitron)
   by Matt McInerney, bundled under the [SIL Open Font License](assets/fonts/OFL.txt).
 * **Car sprite, all other visuals, and every sound effect:** generated
-  procedurally in code -- no external art or audio assets used.
+  procedurally in code -- no external art or audio assets used, other
+  than the app icon above.

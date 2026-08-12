@@ -341,6 +341,38 @@ FONT_PATH = os.path.join(_app_dir(), "assets", "fonts", "Orbitron-Variable.ttf")
 _FALLBACK_FONT_NAMES = "consolas,menlo,dejavusansmono,couriernew,monospace"
 _FONT_CACHE = {}   # remembers fonts we've already built, so we don't rebuild them every time
 
+# The little picture shown in the race window's title bar and in your
+# taskbar/dock -- see the Credits section in README.md for where it's from.
+ICON_PATH = os.path.join(_app_dir(), "assets", "logo.png")
+
+
+def set_windows_app_id():
+    """Give ourselves our own Windows "Application User Model ID."
+
+    Every Python script inherits python.exe's ID by default, and
+    Windows uses that ID to decide both how to group taskbar buttons
+    AND which icon to show for them -- so without this, our taskbar
+    button shows the plain Python logo instead of our own icon, no
+    matter what we pass to set_icon()/iconbitmap() below. This has to
+    run before ANY window (race or menu) is created, or it's too late.
+    Not a Windows concept at all on Mac/Linux, so we skip it there."""
+    if sys.platform.startswith("win"):
+        import ctypes
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("f1straight.game")
+        except (AttributeError, OSError):
+            pass
+
+
+def set_window_icon():
+    """Put our icon on the race window. If the picture is ever missing,
+    we just skip it instead of crashing -- a missing icon isn't worth
+    stopping the whole game over."""
+    try:
+        pygame.display.set_icon(pygame.image.load(ICON_PATH))
+    except (FileNotFoundError, OSError):
+        pass
+
 
 def load_font(size, bold=False):
     # If we already made a font this size before, just reuse it.
@@ -1799,6 +1831,12 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     # RESIZABLE turns on the window's maximize button (and lets you drag
     # the edges) -- without it, the window is stuck at one fixed size
     # and that button does nothing at all.
+    # (both must happen before set_mode() below -- Windows only picks up
+    # the app ID, and pygame only picks up the icon, if they're set
+    # before the window is actually created. Harmless to call the app-ID
+    # one again here even if the launcher already called it.)
+    set_windows_app_id()
+    set_window_icon()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     clock = pygame.time.Clock()
     font = load_font(18)
