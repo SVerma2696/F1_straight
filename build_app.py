@@ -71,15 +71,13 @@ cmd = [
 for entry in add_data:
     cmd += ["--add-data", entry]
 
-# PyInstaller's --icon needs a format the OPERATING SYSTEM recognizes as
-# an icon (.ico on Windows, .icns on Mac) -- a plain .png doesn't work
-# there, even though it's the file we actually keep in the repo. So we
-# convert our one source picture into whichever format today's computer
-# needs, just for this build, using the same Pillow library the game
-# already depends on. This is what puts our icon on the .exe file
-# itself/in the dock -- separate from set_window_icon() in game.py and
-# _set_window_icon() in launcher.py, which put it on the window while
-# the app is actually running.
+# PyInstaller's --icon wants a format the OS actually recognizes as an
+# icon (.ico on Windows, .icns on Mac), and our one source picture is
+# just a plain .png -- so we convert it into whatever this computer
+# needs, just for this build, using Pillow. This is what puts our icon
+# on the .exe/app itself; set_window_icon() in game.py and
+# _set_window_icon() in launcher.py handle the window icon separately,
+# while the app is actually running.
 icon_tmp_dir = None
 if icon_png.exists() and SYSTEM in ("Windows", "Darwin"):
     icon_tmp_dir = tempfile.TemporaryDirectory()

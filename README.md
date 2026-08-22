@@ -19,32 +19,23 @@ Grab a ready-to-run download from the
 [Releases page](https://github.com/SVerma2696/f1_straight/releases) --
 pick the one for your computer.
 
-**Every single one of these three downloads will get flagged as
-"unsafe" the first time -- on purpose, and that's normal.** Nobody paid
-for the paperwork (a code-signing certificate) that tells your browser
-and OS "trust me, I made this" -- so both will warn you about an
-unrecognized/unverified app before letting you run it, no matter which
-computer you're on. Here's exactly what to click through:
-
-1. **While downloading**, Chrome/Edge/Firefox may show a banner like
-   *"This file isn't commonly downloaded and could be dangerous"* --
-   click **Keep** (Chrome/Edge) or **Keep this file** (Firefox) to
-   actually save it. This warning is about the file being NEW, not
-   about anything being wrong with it -- it shows up for any file
-   almost nobody has downloaded yet.
-2. **After downloading**, follow the steps for your computer below.
+Heads up: every one of these will get flagged as "unsafe" the first
+time you open it. That's not a red flag on the game -- nobody's paid
+for the certificate that tells Windows/macOS "trust this app," so they
+both play it safe with anything unsigned. Even your browser might warn
+that the file "isn't commonly downloaded" before it'll let you save it
+-- just click **Keep** and move on. Then:
 
 | Your computer | Download | First-time setup |
 |---|---|---|
-| Windows | `F1Straight-windows.exe` | Double-click it. A blue **"Windows protected your PC"** screen from Microsoft SmartScreen will appear -- click **More info**, then **Run anyway**. You'll only see this once per version; SmartScreen remembers your choice after that. |
-| macOS | `F1Straight-macos` | Right-click (or Control-click) it and choose **Open** -- a popup still warns it's from an "unidentified developer," but this way it gives you an **Open** button (a plain double-click won't, since the app isn't signed by a paid Apple Developer account). If that popup has no Open button, instead go to  **System Settings → Privacy & Security**, scroll down to the security message about F1Straight, click **Open Anyway**, then confirm on the next prompt. |
-| Linux | `F1Straight-linux` | Linux doesn't show a "this could be dangerous" screen the way Windows/Mac do, but it also refuses to run a downloaded file until you mark it as a program yourself: `chmod +x F1Straight-linux`, then `./F1Straight-linux`. Prefer clicking over the terminal? Right-click the file in your file manager → **Properties** → **Permissions** tab → check **"Allow executing file as program"** (wording varies slightly by desktop) instead. |
+| Windows | `F1Straight-windows.exe` | Double-click it, then on the blue SmartScreen screen click **More info** → **Run anyway**. Only happens once per version. |
+| macOS | `F1Straight-macos` | Right-click it and choose **Open** (a plain double-click won't give you that option, since it's not signed with a paid Apple developer account). If the popup doesn't offer an Open button, go to **System Settings → Privacy & Security** and click **Open Anyway** next to the warning instead. |
+| Linux | `F1Straight-linux` | No warning screen here, but it won't run until it's marked executable: `chmod +x F1Straight-linux && ./F1Straight-linux`. Or right-click → Properties → Permissions → "Allow executing file as program" if you'd rather click than type. |
 
-Every release is built fresh for all three from the same source code by
+All three are built from the same source code by
 [.github/workflows/release.yml](.github/workflows/release.yml), so
-they're always in sync with each other -- and none of them are
-digitally signed, which is exactly why every OS double-checks with you
-the first time you run each new version.
+they stay in sync -- and since none of them are signed, this dance is
+just part of running a small hobby project's app for the first time.
 
 ---
 
@@ -419,10 +410,14 @@ what the launcher hands to `add_leaderboard_entry()` afterward.
 ---
 
 ## 📝 Changelog
+### v1.3.4
+* Cleaned up the wording across the README and a few code comments --
+  no functional changes, just easier to read.
+
 ### v1.3.3
 * Added a real app icon (the "F1 Timer" logo, see Credits below) --
-  it now shows up in the race window's title bar, the menu window's
-  title bar, and on the packaged Windows/macOS downloads themselves.
+  shows up in the race window's title bar, the menu window's title
+  bar, and on the packaged Windows/macOS downloads themselves.
 
 ### v1.3.1
 * Replaced the engine hum's raw sawtooth wave with a smoother,

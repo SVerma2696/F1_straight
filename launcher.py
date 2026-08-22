@@ -292,23 +292,19 @@ class Launcher(ctk.CTk):
         try:
             icon_img = ImageTk.PhotoImage(Image.open(g.ICON_PATH))
             self.iconphoto(True, icon_img)
-            # tkinter only keeps a WEAK reference to this picture, so without
-            # holding our own reference here, Python would throw it away the
-            # moment this method ends -- and the icon would vanish with it.
+            # tkinter only keeps a weak reference to this picture, so without
+            # holding onto it ourselves, Python would garbage-collect it the
+            # moment this method returns -- and the icon would vanish with it.
             self._icon_img = icon_img
 
             if sys.platform.startswith("win"):
-                # CustomTkinter itself sets its OWN taskbar icon a fifth of a
-                # second after every window is created (see its ctk_tk.py) --
-                # UNLESS iconbitmap() was already called on the window by
-                # then. iconphoto() alone doesn't count, so without this our
-                # icon was getting silently swapped back out for
-                # CustomTkinter's own logo moments after the window opened,
-                # which is why it looked like nothing had changed at all.
-                # iconbitmap() needs a real Windows .ico file (a .png won't
-                # do), so we convert our one source picture into a temporary
-                # one here, using the same Pillow library the game already
-                # depends on.
+                # CustomTkinter sets its own taskbar icon a fifth of a second
+                # after every window is created (see its ctk_tk.py), unless
+                # iconbitmap() was already called by then -- iconphoto()
+                # alone doesn't count. Without this, our icon would get
+                # swapped back out for CustomTkinter's own right after the
+                # window opens. iconbitmap() needs an actual .ico file
+                # though, so we convert our source PNG into a temporary one.
                 self._icon_tmp_dir = tempfile.TemporaryDirectory()
                 ico_path = os.path.join(self._icon_tmp_dir.name, "icon.ico")
                 Image.open(g.ICON_PATH).save(

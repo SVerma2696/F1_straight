@@ -350,12 +350,10 @@ def set_windows_app_id():
     """Give ourselves our own Windows "Application User Model ID."
 
     Every Python script inherits python.exe's ID by default, and
-    Windows uses that ID to decide both how to group taskbar buttons
-    AND which icon to show for them -- so without this, our taskbar
-    button shows the plain Python logo instead of our own icon, no
-    matter what we pass to set_icon()/iconbitmap() below. This has to
-    run before ANY window (race or menu) is created, or it's too late.
-    Not a Windows concept at all on Mac/Linux, so we skip it there."""
+    Windows decides which taskbar icon to show based on that ID -- so
+    without this, the taskbar shows the plain Python logo no matter
+    what icon we set below. Has to run before any window opens, or
+    it's too late. Doesn't apply on Mac/Linux, so we skip it there."""
     if sys.platform.startswith("win"):
         import ctypes
         try:
@@ -1828,15 +1826,14 @@ def run_race(team_color, theme_mode="auto", high_score=0, serial_port=None, trac
     _FONT_CACHE.clear()
     pygame.init()
     init_audio()
+    # both need to happen before set_mode() below, or they won't take --
+    # calling set_windows_app_id() again here is harmless even if the
+    # launcher already did it
+    set_windows_app_id()
+    set_window_icon()
     # RESIZABLE turns on the window's maximize button (and lets you drag
     # the edges) -- without it, the window is stuck at one fixed size
     # and that button does nothing at all.
-    # (both must happen before set_mode() below -- Windows only picks up
-    # the app ID, and pygame only picks up the icon, if they're set
-    # before the window is actually created. Harmless to call the app-ID
-    # one again here even if the launcher already called it.)
-    set_windows_app_id()
-    set_window_icon()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     clock = pygame.time.Clock()
     font = load_font(18)

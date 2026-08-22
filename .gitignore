@@ -14,13 +14,13 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ...except this one file: PlatformIO put it there itself, and all it
-# does is tell VS Code "hey, install the PlatformIO extension" for
-# anyone who opens the firmware project -- worth keeping. Un-ignoring a
-# file inside an ignored FOLDER takes two steps: first un-ignore the
-# folder itself, then re-ignore everything in it except the one file we
-# actually want (a plain "!" on the file alone doesn't work, since git
-# never even looks inside a folder it's already skipping).
+# ...except this one file: PlatformIO creates it itself, and all it
+# does is tell VS Code to install the PlatformIO extension for anyone
+# who opens the firmware project -- worth keeping. Un-ignoring a file
+# inside an ignored folder takes two steps: un-ignore the folder first,
+# then re-ignore everything in it except the file we actually want
+# (a plain "!" on just the file won't work, since git never looks
+# inside a folder it's already skipping).
 !firmware/f1-straight-controller/.vscode/
 firmware/f1-straight-controller/.vscode/*
 !firmware/f1-straight-controller/.vscode/extensions.json
