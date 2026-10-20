@@ -4,4 +4,4 @@
 # all you need.
 -r requirements.txt
 pyinstaller>=6.0
-pytest>=7.0
+pytest>=9.1.1
